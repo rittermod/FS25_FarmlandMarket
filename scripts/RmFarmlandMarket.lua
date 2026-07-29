@@ -626,8 +626,15 @@ end
 function RmFarmlandMarket.onDayChanged()
     Log:trace(">>> onDayChanged()")
 
-    -- Server only
+    -- Crop state can change as a new day begins. Refresh on every node so
+    -- displayed market values match the server's authoritative price.
+    local changedPriceCount = RmFarmlandMarket.updateAllFarmlandPrices()
+
+    -- Availability and negotiation state remain server-authoritative.
     if g_server == nil then
+        if changedPriceCount > 0 then
+            RmFarmlandMarket.refreshMapDisplay()
+        end
         Log:trace("<<< onDayChanged() [not server]")
         return
     end
@@ -650,13 +657,18 @@ function RmFarmlandMarket.onDayChanged()
     local availWasEmpty = next(RmFmAvailability.availability) == nil
 
     RmFmAvailability.evaluateDaily()
-    -- ensureListedProfiles writes entry.listingPrice for newly-listed parcels.
-    -- It MUST run before the broadcast so the wire payload carries prices.
-    RmNegotiationManager.ensureListedProfiles()
+    -- A changed market value invalidates cached list prices. When prices did
+    -- not change, keep existing seller profiles and only create any needed
+    -- for fields that were listed by evaluateDaily().
+    if changedPriceCount > 0 then
+        RmNegotiationManager.invalidateSellerProfiles()
+    else
+        RmNegotiationManager.ensureListedProfiles()
+    end
 
     Log:debug("SYNC: Broadcasting availability sync to all clients")
     g_server:broadcastEvent(RmAvailabilitySyncEvent.new())
-    RmFarmlandMarket.updateAllHotspotColors()
+    RmFarmlandMarket.refreshMapDisplay()
 
     if availWasEmpty then
         Log:debug("Watchlist for-sale notify: skipped (mid-session auto-init tick)")
@@ -665,7 +677,7 @@ function RmFarmlandMarket.onDayChanged()
     end
 
     -- Compute false->true transitions on the watched slice. listingPrice is
-    -- now authoritative because ensureListedProfiles ran above.
+    -- now authoritative because seller profiles were handled above.
     local transitions = {}
     for id, wasForSale in pairs(oldByFarmlandId) do
         local entry = RmFmAvailability.availability[id]
@@ -1167,10 +1179,12 @@ end
 --- Apply crop-value pricing to all farmlands.
 --- Called from onStartMission when farmlands and fields are fully loaded.
 --- Also called when custom price/ha setting changes.
+---@return number changedPriceCount Number of farmland prices that changed
 function RmFarmlandMarket.updateAllFarmlandPrices()
     Log:trace(">>> updateAllFarmlandPrices()")
     local totalFarmlands = 0
     local farmlandsWithCrops = 0
+    local changedPriceCount = 0
     for _, farmland in pairs(g_farmlandManager:getFarmlands()) do
         totalFarmlands = totalFarmlands + 1
         if farmland.fixedPrice ~= nil then
@@ -1178,14 +1192,20 @@ function RmFarmlandMarket.updateAllFarmlandPrices()
         else
             local priceBefore = farmland.price
             farmland:updatePrice()
-            if farmland.price > priceBefore then
+            local priceDetails = RmFarmlandMarket.priceData[farmland.id]
+            if priceDetails ~= nil and priceDetails.cropValue > 0 then
                 farmlandsWithCrops = farmlandsWithCrops + 1
+            end
+            if math.abs(farmland.price - priceBefore) > 0.01 then
+                changedPriceCount = changedPriceCount + 1
             end
         end
     end
 
-    Log:info("Updated prices for %d farmlands (%d with crop value)", totalFarmlands, farmlandsWithCrops)
+    Log:info("Updated prices for %d farmlands (%d with crop value, %d changed)",
+        totalFarmlands, farmlandsWithCrops, changedPriceCount)
     Log:trace("<<< updateAllFarmlandPrices()")
+    return changedPriceCount
 end
 
 local function onStartMission()
