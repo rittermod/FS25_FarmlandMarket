@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<l10n>
+    <texts>
+        <!-- Settings Menu -->
+        <text name="rm_fm_settings_section" text="Grundstückshandel"/>
+        <text name="rm_fm_settings_availability" text="Fächen Verfügbarkeit"/>
+        <text name="rm_fm_settings_availability_tooltip" text="Legt fest, wie viele Felder zum Kauf verfügbar sind. Höhere Schwierigkeit bedeutet weniger Felder und längere Wartezeiten. Die Felder wechseln nach einem saisonalen Markt (mehr Angebote Nov.–Mär.). ‚Realistisch‘ ist extrem – die meisten Felder sind monatelang gesperrt."/>
+        <text name="rm_fm_settings_pricePerHa" text="Grundpreis pro Hektar"/>
+        <text name="rm_fm_settings_pricePerHa_tooltip" text="Legen Sie einen benutzerdefinierten Grundpreis pro Hektar für alle Ackerländer fest. Der Kulturwert wird hinzugefügt."/>
+        <text name="rm_fm_settings_pricePerHa_mapDefault" text="Map Standard"/>
+        <text name="rm_fm_settings_pricePerHa_dialogPrompt" text="Grundpreis pro Hektar eingeben (Map Standard: %s/ha)"/>
+        <text name="rm_fm_settings_pricePerHa_buttonDefault" text="%s/ha (Standard)"/>
+        <text name="rm_fm_settings_pricePerHa_buttonCustom" text="%s/ha"/>
+        <text name="rm_fm_settings_pricePerHa_dialogConfirm" text="Bestätigen"/>
+
+        <!-- Availability Presets -->
+        <text name="rm_fm_preset_easy" text="Einfach"/>
+        <text name="rm_fm_preset_normal" text="Normal"/>
+        <text name="rm_fm_preset_hard" text="Schwer"/>
+        <text name="rm_fm_preset_harder" text="Schwerer"/>
+        <text name="rm_fm_preset_realistic" text="Realistisch"/>
+
+        <!-- Context Box / Legend -->
+        <text name="rm_fm_listPrice" text="Preis auflisten"/>
+        <text name="rm_fm_marketValue" text="Marktwert"/>
+        <text name="rm_fm_notForSale" text="Nicht zum Verkauf"/>
+        <text name="rm_fm_forSale" text="Zum Verkauf"/>
+
+        <!-- Context Action Buttons -->
+        <text name="rm_fm_btn_makeOffer" text="Angebot machen"/>
+        <text name="rm_fm_btn_negotiateSale" text="Verkauf verhandeln"/>
+
+        <!-- Negotiation Settings -->
+        <text name="rm_fm_settings_negotiateBuy" text="Käufe verhandeln"/>
+        <text name="rm_fm_settings_negotiateBuy_tooltip" text="Beim Kauf eines zum Verkauf stehenden Feldes den Preis durch Angebote und Gegengebote verhandeln, statt den Listenpreis sofort zu bezahlen."/>
+        <text name="rm_fm_settings_negotiateSell" text="Verkäufe verhandeln"/>
+        <text name="rm_fm_settings_negotiateSell_tooltip" text="Beim Verkauf deines Feldes verhandelt ein NPC-Käufer durch Angebote und Gegengebote, anstatt einen sofortigen Verkauf zum Marktwert zu tätigen."/>
+        <text name="rm_fm_settings_unlistedOffers" text="Nicht aufgeführte Angebote"/>
+        <text name="rm_fm_settings_unlistedOffers_tooltip" text="Ermögliche Angebote auf Feldern, die nicht zum Verkauf stehen. Der Besitzer kann ablehnen oder einen Aufschlag verlangen. Erfordert aktivierte Feldverfügbarkeit."/>
+
+        <!-- Negotiation UI -->
+        <text name="rm_fm_neg_listedOpening" text="Dieses Feld wird für %s angeboten. Wie ist dein Angebot?"/>
+        <text name="rm_fm_neg_unlistedOpening" text="%s fordert %s für dieses Feld."/>
+        <text name="rm_fm_neg_sellerCounters" text="%s bietet dagegen %s."/>
+        <text name="rm_fm_neg_npcOpening" text="Ein Käufer bietet %s für dein Feld."/>
+        <text name="rm_fm_neg_npcRaises" text="Der Käufer erhöht sein Angebot auf %s."/>
+        <text name="rm_fm_neg_counterOffer" text="Gegengebot"/>
+        <text name="rm_fm_neg_enterOffer" text="Geben Sie Ihr Angebot ein:"/>
+        <text name="rm_fm_neg_enterCounterAsk" text="Geben Sie Ihre Gegenleistung ein:"/>
+        <text name="rm_fm_neg_convergence" text="%s schlägt vor, die Differenz bei %s zu teilen?"/>
+        <text name="rm_fm_neg_lastDitch" text="%s sagt warte, wie wäre es mit %s?"/>
+        <text name="rm_fm_neg_roundsExhausted" text="Finales Angebot von %s bei %s. Akzeptieren oder ablehnen?"/>
+        <text name="rm_fm_neg_sellRoundsExhausted" text="Das endgültige Angebot des Käufers ist %s. Akzeptieren oder ablehnen?"/>
+        <text name="rm_fm_neg_dealBuy" text="Abgemacht! Du hast das Feld für %s gekauft."/>
+        <text name="rm_fm_neg_dealSell" text="Abgemacht! Du hast das Feld für %s verkauft."/>
+        <text name="rm_fm_neg_rejected" text="Dein Angebot war zu niedrig. %s wird nicht weiter verhandeln."/>
+        <text name="rm_fm_neg_dismissed" text="%s hat kein Interesse, im Moment zu verkaufen."/>
+        <text name="rm_fm_neg_npcWalked" text="Der Käufer ist weg - dein Preis war zu hoch."/>
+        <text name="rm_fm_neg_walkedAway" text="Du bist aus der Verhandlung ausgestiegen."/>
+        <text name="rm_fm_neg_ended" text="Die Verhandlung ist beendet."/>
+        <text name="rm_fm_neg_cooldown" text="Der Besitzer hat im Moment kein Interesse zu verhandeln. Versuche es später."/>
+        <text name="rm_fm_neg_locked" text="Ein anderer Spieler verhandelt gerade dieses Feld."/>
+        <text name="rm_fm_neg_invalidFarmland" text="Dieses Feld kann nicht verhandelt werden."/>
+        <text name="rm_fm_neg_error" text="Verhandlungsfehler: %s"/>
+        <text name="rm_fm_neg_invalidAmount" text="Bitte geben Sie eine gültigen Wert größer als Null ein."/>
+        <text name="rm_fm_neg_listingTooHigh" text="Ihr Angebotspreis darf %s nicht überschreiten (doppelter Marktwert)."/>
+        <text name="rm_fm_neg_listingTooHigh2" text="Der Angebotspreis war zu hoch."/>
+        <text name="rm_fm_neg_cancelConfirm" text="Aus dieser Verhandlung aussteigen?"/>
+        <text name="rm_fm_neg_insufficientFunds" text="Du hast nicht genug Geld, um diesen Kauf abzuschließen."/>
+        <text name="rm_fm_neg_offerNotHigher" text="Du musst mehr als dein vorheriges Gebot anbieten."/>
+        <text name="rm_fm_neg_askNotLower" text="Du musst weniger als deinen vorherigen Preis verlangen."/>
+        <text name="rm_fm_neg_cooldownDisplay" text="Der Besitzer hat im Moment kein Interesse zu verhandeln. Versuche es in %d Monat(en) erneut."/>
+        <text name="rm_fm_neg_cooldownDaysDisplay" text="Der Besitzer hat im Moment kein Interesse zu verhandeln. Versuche es in %d Tag(en) erneut."/>
+        <text name="rm_fm_neg_cooldownSell" text="Du kannst dieses Feld im Moment nicht erneut auflisten. Versuche es später."/>
+        <text name="rm_fm_neg_cooldownSellDisplay" text="Du kannst dieses Feld im Moment nicht erneut auflisten. Versuche es in %d Monat(en) erneut."/>
+        <text name="rm_fm_neg_cooldownSellDaysDisplay" text="Du kannst dieses Feld im Moment nicht erneut auflisten. Versuche es in %d Tag(en) erneut."/>
+        <text name="rm_fm_neg_submit" text="Absenden"/>
+        <text name="rm_fm_neg_continue" text="Fortfahren"/>
+        <text name="rm_fm_neg_accept" text="Akzeptieren"/>
+        <text name="rm_fm_neg_decline" text="Ablehnen"/>
+        <text name="rm_fm_neg_walkAway" text="Weggehen"/>
+        <text name="rm_fm_neg_enterListingPrice" text="Geben Sie Ihren Angebotspreis für dieses Feld ein (Marktwert: %s):"/>
+
+        <!-- Negotiation Dialog -->
+        <text name="rm_fm_neg_dlg_titleBuy" text="Verhandlung - Ackerland %s"/>
+        <text name="rm_fm_neg_dlg_titleSell" text="Verkauf - Ackerland %s"/>
+        <text name="rm_fm_neg_dlg_headerArea" text="%.1f ha"/>
+        <text name="rm_fm_neg_dlg_headerAreaValue" text="%.1f ha  |  Marktwert: %s"/>
+        <text name="rm_fm_neg_dlg_you" text="Du"/>
+        <text name="rm_fm_neg_dlg_seller" text="Verkäufer"/>
+        <text name="rm_fm_neg_dlg_buyer" text="Käufer"/>
+        <text name="rm_fm_neg_dlg_listedAt" text="Angeboten zu"/>
+        <text name="rm_fm_neg_dlg_ownerDemands" text="%s verlangt"/>
+        <text name="rm_fm_neg_dlg_youListedAt" text="Du hast angeboten zu"/>
+        <text name="rm_fm_neg_dlg_waiting" text="Warte auf Antwort..."/>
+        <text name="rm_fm_neg_counterAsk" text="Gegenangebot"/>
+        <text name="rm_fm_neg_close" text="Schließen"/>
+
+        <!-- Watchlist -->
+        <text name="rm_fm_btn_watchlist" text="Beobachtungsliste"/>
+        <text name="rm_fm_watchlist_title" text="Beobachtungsliste"/>
+        <text name="rm_fm_watchlist_back" text="Zurück"/>
+        <text name="rm_fm_farmland_label" text="Ackerland"/>
+        <text name="rm_fm_watchlist_empty" text="Deine Beobachtungsliste ist leer. Wähle ein Ackerland auf der Karte und verwende 'Zur Beobachtungsliste hinzufügen'."/>
+        <text name="rm_fm_btn_addToWatchlist" text="Zur Beobachtungsliste hinzufügen"/>
+        <text name="rm_fm_btn_removeFromWatchlist" text="Aus Beobachtungsliste entfernen"/>
+        <text name="rm_fm_watchlist_now_for_sale_title" text="Update Beobachtungsliste "/>
+        <text name="rm_fm_watchlist_now_for_sale_single_with_price" text="%s ist jetzt zum Verkauf für %s"/>
+        <text name="rm_fm_watchlist_now_for_sale_single_no_price" text="%s ist jetzt zum Verkauf"/>
+        <text name="rm_fm_watchlist_now_for_sale_batched" text="%d beobachtete Ackerländer sind jetzt zum Verkauf: %s"/>
+        <text name="rm_fm_watchlist_now_for_sale_overflow_suffix" text=", und %d weitere"/>
+        <text name="rm_fm_watchlist_cooldown_ended_title" text="Aktualisierung der Beobachtungsliste für Ackerland"/>
+        <text name="rm_fm_watchlist_cooldown_ended_single" text="Abklingzeit auf %s beendet"/>
+        <text name="rm_fm_watchlist_cooldown_ended_batched" text="Abklingzeit bei %d beobachteten Ackerländern beendet: %s"/>
+    </texts>
+</l10n>
