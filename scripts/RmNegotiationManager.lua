@@ -276,12 +276,18 @@ end
 ---@return string|nil errorReason
 local function doStartListedBuy(farmlandId, farmId)
     Log:trace(">>> doStartListedBuy(farmlandId=%d, farmId=%d)", farmlandId, farmId)
+    if not RmFmSettings.isNegotiateBuyEnabled() then
+        return nil, "listed_buy_disabled"
+    end
     -- Validate
     local canNeg, reason = RmNegotiationManager.canNegotiate(farmlandId, farmId)
     if not canNeg then return nil, reason end
     local farmland = g_farmlandManager:getFarmlandById(farmlandId)
     if farmland == nil then return nil, "invalid_farmland" end
     if farmland.farmId == farmId then return nil, "own_farmland" end
+    if not RmFmAvailability.isForSale(farmlandId) then
+        return nil, "farmland_not_listed"
+    end
     -- Cancel any existing session for this farm (no cooldown)
     RmNegotiationManager.cancelSession(farmId)
     -- Get or generate seller profile
@@ -340,12 +346,18 @@ end
 ---@return string|nil errorReason
 local function doStartUnlistedBuy(farmlandId, farmId)
     Log:trace(">>> doStartUnlistedBuy(farmlandId=%d, farmId=%d)", farmlandId, farmId)
+    if not RmFmSettings.isUnlistedOffersEnabled() then
+        return nil, "unlisted_offers_disabled"
+    end
     -- Validate
     local canNeg, reason = RmNegotiationManager.canNegotiate(farmlandId, farmId)
     if not canNeg then return nil, reason end
     local farmland = g_farmlandManager:getFarmlandById(farmlandId)
     if farmland == nil then return nil, "invalid_farmland" end
     if farmland.farmId == farmId then return nil, "own_farmland" end
+    if RmFmAvailability.isForSale(farmlandId) then
+        return nil, "farmland_is_listed"
+    end
     -- Cancel any existing session
     RmNegotiationManager.cancelSession(farmId)
     -- Generate fresh profile (unlisted = new person each time)
@@ -419,6 +431,9 @@ end
 ---@return string|nil errorReason
 local function doStartSell(farmlandId, farmId, listingPrice)
     Log:trace(">>> doStartSell(farmlandId=%d, farmId=%d, listingPrice=%.0f)", farmlandId, farmId, listingPrice)
+    if not RmFmSettings.isNegotiateSellEnabled() then
+        return nil, "sell_negotiation_disabled"
+    end
     -- Validate listing price
     if type(listingPrice) ~= "number" or listingPrice <= 0 then
         return nil, "invalid_listing_price"
