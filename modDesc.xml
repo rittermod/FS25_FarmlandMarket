@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="110">
     <author>Ritter</author>
-    <version>1.0.1.0-dev.1</version>
+    <version>1.0.1.0</version>
     <title>
         <en>Farmland Market</en>
         <de>Grundstücksmarkt</de>
@@ -26,8 +26,8 @@ Notes:
 Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
-1.0.1.0-dev.1:
-- Added German (de) translation, including the mod title and store description - contributed by Phips98
+1.0.1.0:
+- Added German (de) translation - contributed by Phips98
 - Added Ukrainian (uk) translation - contributed by daniilua
 
 1.0.0.0:

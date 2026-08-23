@@ -1114,7 +1114,7 @@ end
 local function onLoadMapFinished()
     Log:info("Map loaded, initializing FarmlandMarket")
 
-    -- F11: Register negotiation dialog GUI (before console commands per tech-spec)
+    -- Register negotiation dialog GUI (before console commands)
     RmNegotiationDialog.register()
     RmWatchlistDialog.register()
 

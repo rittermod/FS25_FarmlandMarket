@@ -1,11 +1,12 @@
 -- RmWatchlistDialog - Modal dialog for the Watchlist feature.
 -- Author: Ritter
 --
--- MessageDialog subclass with a SmoothList of eligible (unowned) farmlands.
--- Each row shows the farmland's display name, area in hectares (plus an
--- expiry-day suffix when listed), and either the formatted listing price or
--- "Not for sale" on the right. Curation, persistence, and add/remove arrive
--- in a follow-up spec.
+-- MessageDialog subclass with a SmoothList of the farmlands the local farm
+-- is watching (watched AND still eligible for availability). Each row shows
+-- the farmland's display name, area in hectares (plus an expiry-day suffix
+-- when listed), and either the formatted listing price or "Not for sale" on
+-- the right. Entries are curated from the map's action menu (RmWatchlistUI)
+-- and persisted by RmWatchlistStore.
 
 local Log = RmLogging.getLogger("FarmlandMarket")
 
@@ -340,7 +341,7 @@ function RmWatchlistDialog:populateCellForItemInSection(list, section, index, ce
     if nameElement == nil or subtextElement == nil or priceElement == nil then
         -- An XML rename or typo on the row template's name="..." attributes
         -- would surface here on first reloadData. Bail without crashing the
-        -- engine row loop. No log per spec ("NO logging in this function").
+        -- engine row loop. No logging here - this runs once per row.
         return
     end
 

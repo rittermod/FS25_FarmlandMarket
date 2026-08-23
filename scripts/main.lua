@@ -52,7 +52,7 @@ source(modDirectory .. "scripts/RmFmAvailability.lua")        -- After events (d
 source(modDirectory .. "scripts/RmNegotiationEngine.lua")     -- Stateless negotiation algorithm
 source(modDirectory .. "scripts/RmNegotiationManager.lua")    -- Session state machine (wraps engine)
 source(modDirectory .. "scripts/gui/RmNegotiationDialog.lua") -- Custom negotiation dialog
-source(modDirectory .. "scripts/gui/RmWatchlistDialog.lua")   -- Skeleton watchlist dialog
+source(modDirectory .. "scripts/gui/RmWatchlistDialog.lua")   -- Watchlist dialog (watched farmland list)
 source(modDirectory .. "scripts/RmNegotiationUI.lua")         -- UI controller (wraps manager for dialogs)
 source(modDirectory .. "scripts/RmWatchlistStore.lua")        -- Watchlist server master + persistence (must precede UI)
 source(modDirectory .. "scripts/RmWatchlistUI.lua")           -- Watchlist map-frame button + dialog hook

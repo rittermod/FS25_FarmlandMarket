@@ -1,10 +1,12 @@
 -- RmWatchlistUI - Map-frame integration for the Watchlist feature.
 -- Author: Ritter
 --
--- Step 1 only: clones the Back button in the map frame's bottom buttonBox
--- to insert a Watchlist button visible only on the Farmlands subcategory,
--- and opens a skeleton RmWatchlistDialog when clicked. Future steps populate
--- the dialog body.
+-- Clones the Back button in the map frame's bottom buttonBox to insert a
+-- Watchlist button visible only on the Farmlands subcategory, which opens
+-- RmWatchlistDialog (also bound to MENU_EXTRA_2, the C key by default).
+-- Also owns the local watched-id cache, the "Add to watchlist" /
+-- "Remove from watchlist" action-menu toggle, and the for-sale and
+-- cooldown-expiry notifications. See the section banners below.
 
 RmWatchlistUI = {}
 
@@ -42,7 +44,7 @@ function RmWatchlistUI.shouldShow(state)
     return result
 end
 
---- Open the skeleton Watchlist dialog.
+--- Open the Watchlist dialog.
 function RmWatchlistUI.openDialog()
     Log:trace(">>> RmWatchlistUI.openDialog()")
     RmWatchlistDialog.show()

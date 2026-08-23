@@ -136,7 +136,7 @@ end
 --- drive the client-side logic without stubbing g_server (the fmTest harness
 --- keeps g_server set throughout, which would short-circuit run()).
 ---
---- Three-case dispatch (per spec Cache-clear discipline rule):
+--- Three-case dispatch (cache-clear discipline):
 ---  (a) own-farm present with non-empty ids -> replace cache with the array.
 ---  (b) own-farm present with empty array   -> clear cache (server says "your
 ---      farm is empty now"; e.g. removing the last entry).

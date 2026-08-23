@@ -1,7 +1,7 @@
 # Changelog
 
-## 1.0.1.0-dev.1:
-- Added German (de) translation, including the mod title and store description - contributed by Phips98
+## 1.0.1.0:
+- Added German (de) translation - contributed by Phips98
 - Added Ukrainian (uk) translation - contributed by daniilua
 
 ## 1.0.0.0:

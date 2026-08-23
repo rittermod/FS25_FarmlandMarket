@@ -108,17 +108,17 @@ function RmNegotiationDialog:onOpen()
     -- Clear state
     self.historyRows = {}
     self.currentSnapshot = nil
-    self.currentMode = nil          -- F5: Clear stale mode
+    self.currentMode = nil          -- Clear stale mode
     self.currentState = nil
     self.previousButtonState = nil
     self.previousStatusText = nil
 
-    -- F3/F10: Clear text input
+    -- Clear text input
     if self.textInputElement ~= nil then
         self.textInputElement:setText("")
     end
 
-    -- F6: Clear status text
+    -- Clear status text
     if self.statusTextElement ~= nil then
         self.statusTextElement:setText("")
     end
@@ -199,7 +199,7 @@ function RmNegotiationDialog:updateFromSnapshot(snapshot)
                 string.format(g_i18n:getText("rm_fm_neg_dlg_headerArea"), farmland.areaInHa))
         end
     else
-        -- F8: Clear header when farmland data unavailable
+        -- Clear header when farmland data unavailable
         self.headerInfoElement:setText("")
     end
 
@@ -384,7 +384,7 @@ function RmNegotiationDialog:setActionState(state, params)
     Log:trace(">>> RmNegotiationDialog:setActionState(%d)", state)
     params = params or {}
 
-    -- F2: Release text input force-press when leaving STATE_OFFER_INPUT
+    -- Release text input force-press when leaving STATE_OFFER_INPUT
     if self.currentState == RmNegotiationDialog.STATE_OFFER_INPUT
        and self.textInputElement ~= nil then
         self.textInputElement:setForcePressed(false)
@@ -392,7 +392,7 @@ function RmNegotiationDialog:setActionState(state, params)
 
     self.currentState = state
 
-    -- F6: Clear status text before state transition (prevents stale text)
+    -- Clear status text before state transition (prevents stale text)
     if self.statusTextElement ~= nil then
         self.statusTextElement:setText("")
     end
@@ -400,12 +400,12 @@ function RmNegotiationDialog:setActionState(state, params)
     -- Configure footer buttons and text input for the new state
     self:configureFooterButtons(state)
 
-    -- F3: Clear text input when entering offer input state
+    -- Clear text input when entering offer input state
     if state == RmNegotiationDialog.STATE_OFFER_INPUT and self.textInputElement ~= nil then
         self.textInputElement:setText("")
     end
 
-    -- F7: Auto-set waiting text
+    -- Auto-set waiting text
     if state == RmNegotiationDialog.STATE_WAITING and self.statusTextElement ~= nil then
         self.statusTextElement:setText(g_i18n:getText("rm_fm_neg_dlg_waiting"))
     end
@@ -702,7 +702,7 @@ function RmNegotiationDialog.register()
     Log:trace(">>> RmNegotiationDialog.register()")
     local modDir = RmFarmlandMarket.modDirectory
     g_gui:loadProfiles(modDir .. "gui/guiProfiles.xml")
-    -- F4: Create instance first (ASC pattern) - no 4th arg (isFrame is for TabbedMenu frames)
+    -- Create instance first (ASC pattern) - no 4th arg (isFrame is for TabbedMenu frames)
     local dialog = RmNegotiationDialog.new(g_i18n)
     g_gui:loadGui(modDir .. "gui/RmNegotiationDialog.xml", "RmNegotiationDialog", dialog)
     if dialog ~= nil then
