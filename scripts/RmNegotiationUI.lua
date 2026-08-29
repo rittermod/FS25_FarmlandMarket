@@ -393,6 +393,16 @@ function RmNegotiationUI.getErrorMessage(errorReason)
         return g_i18n:getText("rm_fm_neg_offerNotHigher")
     elseif errorReason == "ask_not_lower" then
         return g_i18n:getText("rm_fm_neg_askNotLower")
+    elseif errorReason == "listed_buy_disabled" then
+        return g_i18n:getText("rm_fm_neg_listedBuyDisabled")
+    elseif errorReason == "unlisted_offers_disabled" then
+        return g_i18n:getText("rm_fm_neg_unlistedOffersDisabled")
+    elseif errorReason == "sell_negotiation_disabled" then
+        return g_i18n:getText("rm_fm_neg_sellNegotiationDisabled")
+    elseif errorReason == "farmland_not_listed" then
+        return g_i18n:getText("rm_fm_neg_farmlandNotListed")
+    elseif errorReason == "farmland_is_listed" then
+        return g_i18n:getText("rm_fm_neg_farmlandIsListed")
     end
     return string.format(g_i18n:getText("rm_fm_neg_error"), tostring(errorReason))
 end

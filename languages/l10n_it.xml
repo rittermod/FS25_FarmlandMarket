@@ -69,6 +69,11 @@
         <text name="rm_fm_neg_insufficientFunds" text="Non hai abbastanza denaro per completare questo acquisto."/>
         <text name="rm_fm_neg_offerNotHigher" text="Devi offrire più della tua offerta precedente."/>
         <text name="rm_fm_neg_askNotLower" text="Devi chiedere meno del prezzo richiesto precedente."/>
+        <text name="rm_fm_neg_listedBuyDisabled" text="Le trattative per i campi in vendita sono attualmente disattivate."/>
+        <text name="rm_fm_neg_unlistedOffersDisabled" text="Le offerte per i campi non in vendita sono attualmente disattivate."/>
+        <text name="rm_fm_neg_sellNegotiationDisabled" text="Le trattative di vendita sono attualmente disattivate."/>
+        <text name="rm_fm_neg_farmlandNotListed" text="Questo campo non è più in vendita. Selezionalo di nuovo per vedere le opzioni disponibili."/>
+        <text name="rm_fm_neg_farmlandIsListed" text="Questo campo è ora in vendita. Selezionalo di nuovo per fare un'offerta."/>
         <text name="rm_fm_neg_cooldownDisplay" text="Il proprietario non è interessato a negoziare in questo momento. Riprova tra %d mese/i."/>
         <text name="rm_fm_neg_cooldownSell" text="Non puoi rimettere in vendita questo campo in questo momento. Riprova più tardi."/>
         <text name="rm_fm_neg_cooldownSellDisplay" text="Non puoi rimettere in vendita questo campo in questo momento. Riprova tra %d mese/i."/>

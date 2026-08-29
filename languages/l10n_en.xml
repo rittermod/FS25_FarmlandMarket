@@ -69,6 +69,11 @@
         <text name="rm_fm_neg_insufficientFunds" text="You don't have enough money to complete this purchase."/>
         <text name="rm_fm_neg_offerNotHigher" text="You must offer more than your previous bid."/>
         <text name="rm_fm_neg_askNotLower" text="You must ask less than your previous asking price."/>
+        <text name="rm_fm_neg_listedBuyDisabled" text="Negotiating purchases for listed fields is currently disabled."/>
+        <text name="rm_fm_neg_unlistedOffersDisabled" text="Making offers on unlisted fields is currently disabled."/>
+        <text name="rm_fm_neg_sellNegotiationDisabled" text="Negotiating field sales is currently disabled."/>
+        <text name="rm_fm_neg_farmlandNotListed" text="This field is no longer listed for sale. Select it again to see your options."/>
+        <text name="rm_fm_neg_farmlandIsListed" text="This field is now listed for sale. Select it again to make an offer."/>
         <text name="rm_fm_neg_cooldownDisplay" text="The owner is not interested in negotiating right now. Try again in %d month(s)."/>
         <text name="rm_fm_neg_cooldownDaysDisplay" text="The owner is not interested in negotiating right now. Try again in %d day(s)."/>
         <text name="rm_fm_neg_cooldownSell" text="You cannot relist this field right now. Try again later."/>
