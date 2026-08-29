@@ -96,6 +96,11 @@ RmFmAvailability.SELLING_SEASON = { [1]=true, [2]=true, [3]=true, [11]=true, [12
 --- Availability table: { [farmlandId] = {isForSale, expiryDay, listingDay} }
 RmFmAvailability.availability = {}
 
+--- Saved rows whose farmland ID is not present on the current map.
+--- Kept out of live evaluation and client sync, but written back to the
+--- savegame in case a later map update restores the farmland.
+RmFmAvailability._unmatchedAvailability = {}
+
 --- One-shot per-mission flag for the watchlist for-sale notification path.
 --- The first RmAvailabilitySyncEvent:run a client receives delivers the
 --- current full availability state, which by definition lists every
@@ -103,6 +108,55 @@ RmFmAvailability.availability = {}
 --- listed farmland would generate a notification at join. Reset to false
 --- on BaseMission.delete so reconnect starts fresh.
 RmFmAvailability._initialSyncSeen = false
+
+local MAX_SAVED_DAY = 2147483647
+
+--- Normalize a persisted farmland ID.
+---@param value any
+---@return number|nil farmlandId
+local function normalizeFarmlandId(value)
+    local farmlandId = tonumber(value)
+    if farmlandId == nil
+        or farmlandId ~= farmlandId
+        or farmlandId < 1
+        or farmlandId > MAX_SAVED_DAY
+        or farmlandId ~= math.floor(farmlandId) then
+        return nil
+    end
+    return farmlandId
+end
+
+--- Normalize a persisted day value for comparisons and INT serialization.
+---@param value any
+---@return number day
+local function normalizeSavedDay(value)
+    local day = tonumber(value)
+    if day == nil or day ~= day or day < 0 then
+        return 0
+    end
+    return math.min(math.floor(day), MAX_SAVED_DAY)
+end
+
+--- Return a complete availability entry from persisted or runtime data.
+---@param entry table|nil
+---@return table normalized
+local function normalizeAvailabilityEntry(entry)
+    entry = type(entry) == "table" and entry or {}
+    local isForSale = entry.isForSale == true
+    local expiryDay = normalizeSavedDay(entry.expiryDay)
+    local listingDay = normalizeSavedDay(entry.listingDay)
+
+    if not isForSale then
+        expiryDay = 0
+        listingDay = 0
+    end
+
+    return {
+        isForSale = isForSale,
+        expiryDay = expiryDay,
+        listingDay = listingDay,
+    }
+end
 
 -- ============================================================================
 -- CORE LOGIC
@@ -164,7 +218,7 @@ function RmFmAvailability.isForSale(farmlandId)
     end
 
     Log:trace("<<< isForSale = %s", tostring(entry.isForSale))
-    return entry.isForSale
+    return entry.isForSale == true
 end
 
 --- Get current day from environment
@@ -195,20 +249,91 @@ local function getDaysPerPeriod()
     return g_currentMission.environment.daysPerPeriod
 end
 
+--- Reconcile loaded availability rows with the farmlands on the current map.
+--- Missing current farmlands start unlisted and join the normal daily rolls.
+--- Unknown saved IDs remain preserved, but stay out of live state and sync.
+function RmFmAvailability.reconcileWithCurrentFarmlands()
+    Log:trace(">>> reconcileWithCurrentFarmlands()")
+
+    if g_server == nil then
+        Log:trace("<<< reconcileWithCurrentFarmlands() [not server]")
+        return
+    end
+
+    local currentById = {}
+    for _, farmland in pairs(g_farmlandManager:getFarmlands()) do
+        currentById[farmland.id] = farmland
+    end
+
+    local reconciled = {}
+    local unmatched = {}
+    local seen = {}
+    local seeded = 0
+    local dropped = 0
+    local preserved = 0
+
+    local function reconcileSavedEntry(savedId, entry)
+        local farmlandId = normalizeFarmlandId(savedId)
+        if farmlandId == nil or seen[farmlandId] then
+            return
+        end
+        seen[farmlandId] = true
+
+        local normalized = normalizeAvailabilityEntry(entry)
+        local farmland = currentById[farmlandId]
+        if farmland == nil then
+            unmatched[farmlandId] = normalized
+            preserved = preserved + 1
+        elseif RmFmAvailability.isEligibleForAvailability(farmland) then
+            reconciled[farmlandId] = normalized
+        else
+            dropped = dropped + 1
+        end
+    end
+
+    for farmlandId, entry in pairs(RmFmAvailability.availability) do
+        reconcileSavedEntry(farmlandId, entry)
+    end
+    for farmlandId, entry in pairs(RmFmAvailability._unmatchedAvailability) do
+        reconcileSavedEntry(farmlandId, entry)
+    end
+
+    for farmlandId, farmland in pairs(currentById) do
+        if RmFmAvailability.isEligibleForAvailability(farmland)
+            and reconciled[farmlandId] == nil then
+            reconciled[farmlandId] = {
+                isForSale = false,
+                expiryDay = 0,
+                listingDay = 0,
+            }
+            seeded = seeded + 1
+        end
+    end
+
+    RmFmAvailability.availability = reconciled
+    RmFmAvailability._unmatchedAvailability = unmatched
+
+    Log:info("Availability state reconciled: %d added, %d ineligible removed, %d unmatched preserved",
+        seeded, dropped, preserved)
+    Log:trace("<<< reconcileWithCurrentFarmlands()")
+end
+
 --- Initialize availability system (called on mission start if no saved state)
 function RmFmAvailability.initialize()
     Log:trace(">>> initialize()")
 
-    -- Skip if already initialized (loaded from savegame)
-    if next(RmFmAvailability.availability) ~= nil then
-        Log:debug("AVAIL: Availability already initialized (loaded from savegame)")
-        Log:trace("<<< initialize() [already initialized]")
-        return
-    end
-
     -- Only run on server
     if g_server == nil then
         Log:trace("<<< initialize() [not server]")
+        return
+    end
+
+    -- Reconcile partial saved state after all farmland prices are available.
+    if next(RmFmAvailability.availability) ~= nil
+        or next(RmFmAvailability._unmatchedAvailability) ~= nil then
+        RmFmAvailability.reconcileWithCurrentFarmlands()
+        Log:debug("AVAIL: Availability restored from savegame")
+        Log:trace("<<< initialize() [restored]")
         return
     end
 
@@ -397,66 +522,55 @@ function RmFmAvailability.loadFromXMLFile(xmlFile)
         return
     end
 
+    RmFmAvailability.availability = {}
+    RmFmAvailability._unmatchedAvailability = {}
+
     local key = "rmFarmlandMarket.availability"
     local i = 0
-    local skipped = 0
+    local invalid = 0
+    local unmatched = 0
     while true do
         local entryKey = string.format("%s.farmland(%d)", key, i)
         if not xmlFile:hasProperty(entryKey) then
             break
         end
 
-        local farmlandId = xmlFile:getValue(entryKey .. "#id")
-        local isForSale = xmlFile:getValue(entryKey .. "#isForSale")
-        local expiryDay = xmlFile:getValue(entryKey .. "#expiryDay")
-        local listingDay = xmlFile:getValue(entryKey .. "#listingDay")
+        local farmlandId = normalizeFarmlandId(xmlFile:getValue(entryKey .. "#id"))
+        local entry = normalizeAvailabilityEntry({
+            isForSale = xmlFile:getValue(entryKey .. "#isForSale"),
+            expiryDay = xmlFile:getValue(entryKey .. "#expiryDay"),
+            listingDay = xmlFile:getValue(entryKey .. "#listingDay"),
+        })
 
-        if farmlandId ~= nil then
-            -- Drop persisted rows for farmlands that exist but no longer
-            -- pass the eligibility predicate (e.g. legacy $0 plot rows from
-            -- saves predating the price-gate). Unknown farmland IDs are kept
-            -- as-is - they may be synthetic test IDs or refer to a transient
-            -- lookup miss.
-            --
-            -- Timing: this scrub runs at Mission00.loadItemsFinished, before
-            -- our Farmland.updatePrice override adds crop value at
-            -- onStartMission. We compare BASE price only. For typical $0
-            -- plots (map borders / forest) crop value is also 0, so the
-            -- comparison matches the runtime semantic. Exotic edge case: an
-            -- unowned farmland with a planted field could have base=0 but
-            -- crop>0, in which case this scrub drops a row that
-            -- updateAllFarmlandPrices would have made eligible. Acceptable:
-            -- evaluateDaily can re-list the parcel on a future tick.
-            local farmland = g_farmlandManager:getFarmlandById(farmlandId)
-            local isStale = farmland ~= nil
-                and not RmFmAvailability.isEligibleForAvailability(farmland)
-            if isStale then
-                skipped = skipped + 1
-                Log:debug("AVAIL: Dropping stale persisted row for farmland %d (no longer eligible)",
-                    farmlandId)
-            else
-                RmFmAvailability.availability[farmlandId] = {
-                    isForSale = isForSale,
-                    expiryDay = expiryDay,
-                    listingDay = listingDay,
-                }
-                Log:trace("  AVAIL: Loaded farmland %d: isForSale=%s expiryDay=%d listingDay=%d",
-                    farmlandId, tostring(isForSale), expiryDay, listingDay)
-            end
+        if farmlandId == nil then
+            invalid = invalid + 1
+            Log:warning("AVAIL: Ignoring saved availability row %d with an invalid farmland ID", i)
+        elseif g_farmlandManager:getFarmlandById(farmlandId) == nil then
+            RmFmAvailability._unmatchedAvailability[farmlandId] = entry
+            unmatched = unmatched + 1
+            Log:debug("AVAIL: Preserving saved row for unmatched farmland %d", farmlandId)
+        else
+            -- Eligibility is checked later by initialize(), after crop value
+            -- has been added to farmland prices.
+            RmFmAvailability.availability[farmlandId] = entry
+            Log:trace("  AVAIL: Loaded farmland %d: isForSale=%s expiryDay=%d listingDay=%d",
+                farmlandId, tostring(entry.isForSale), entry.expiryDay, entry.listingDay)
         end
 
         i = i + 1
     end
 
+    local activeCount = 0
     local forSaleCount = 0
     for _, entry in pairs(RmFmAvailability.availability) do
+        activeCount = activeCount + 1
         if entry.isForSale then
             forSaleCount = forSaleCount + 1
         end
     end
 
-    Log:info("Availability state loaded: %d farmlands (%d for sale, %d stale skipped)",
-        i - skipped, forSaleCount, skipped)
+    Log:info("Availability state loaded: %d current farmlands (%d for sale), %d unmatched preserved, %d invalid skipped",
+        activeCount, forSaleCount, unmatched, invalid)
     Log:trace("<<< loadFromXMLFile()")
 end
 
@@ -473,18 +587,35 @@ function RmFmAvailability.saveToXMLFile(xmlFile)
 
     local key = "rmFarmlandMarket.availability"
     local i = 0
-    for farmlandId, entry in pairs(RmFmAvailability.availability) do
-        local entryKey = string.format("%s.farmland(%d)", key, i)
-        xmlFile:setValue(entryKey .. "#id", farmlandId)
-        xmlFile:setValue(entryKey .. "#isForSale", entry.isForSale)
-        xmlFile:setValue(entryKey .. "#expiryDay", entry.expiryDay)
-        xmlFile:setValue(entryKey .. "#listingDay", entry.listingDay)
-        Log:trace("  AVAIL: Saved farmland %d: isForSale=%s expiryDay=%d listingDay=%d",
-            farmlandId, tostring(entry.isForSale), entry.expiryDay, entry.listingDay)
-        i = i + 1
+    local skipped = 0
+    local seen = {}
+
+    local function saveEntries(entries)
+        for savedId, entry in pairs(entries) do
+            local farmlandId = normalizeFarmlandId(savedId)
+            if farmlandId == nil or seen[farmlandId] then
+                skipped = skipped + 1
+                Log:warning("AVAIL: Skipping invalid or duplicate availability row during save")
+            else
+                seen[farmlandId] = true
+                local normalized = normalizeAvailabilityEntry(entry)
+                local entryKey = string.format("%s.farmland(%d)", key, i)
+                xmlFile:setValue(entryKey .. "#id", farmlandId)
+                xmlFile:setValue(entryKey .. "#isForSale", normalized.isForSale)
+                xmlFile:setValue(entryKey .. "#expiryDay", normalized.expiryDay)
+                xmlFile:setValue(entryKey .. "#listingDay", normalized.listingDay)
+                Log:trace("  AVAIL: Saved farmland %d: isForSale=%s expiryDay=%d listingDay=%d",
+                    farmlandId, tostring(normalized.isForSale),
+                    normalized.expiryDay, normalized.listingDay)
+                i = i + 1
+            end
+        end
     end
 
-    Log:debug("AVAIL: Saved %d availability entries", i)
+    saveEntries(RmFmAvailability.availability)
+    saveEntries(RmFmAvailability._unmatchedAvailability)
+
+    Log:debug("AVAIL: Saved %d availability entries (%d skipped)", i, skipped)
     Log:debug("Availability state saved")
     Log:trace("<<< saveToXMLFile()")
 end
@@ -522,6 +653,7 @@ end
 function RmFmAvailability.reset()
     Log:trace(">>> reset()")
     RmFmAvailability.availability = {}
+    RmFmAvailability._unmatchedAvailability = {}
     Log:debug("AVAIL: Availability state cleared")
     Log:trace("<<< reset()")
 end
