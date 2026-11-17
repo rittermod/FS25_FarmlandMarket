@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
-<modDesc descVersion="110">
+<modDesc descVersion="115">
     <author>Ritter</author>
-    <version>1.0.1.0</version>
+    <version>1.1.0.0-dev.1</version>
     <title>
         <en>Farmland Market</en>
         <de>Grundstücksmarkt</de>
