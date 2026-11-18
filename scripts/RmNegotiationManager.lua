@@ -1190,7 +1190,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
 
     local key = "rmFarmlandMarket.negotiations"
     local i = 0
-    local profileCount, cooldownCount, skippedProfiles, skippedCooldowns = 0, 0, 0, 0
+    local profileCount, cooldownCount, skippedProfiles = 0, 0, 0
 
     while true do
         local entryKey = string.format("%s.farmland(%d)", key, i)
@@ -1209,6 +1209,10 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
             -- Timing: this scrub runs at Mission00.loadItemsFinished, before
             -- crop value is added to farmland.price at onStartMission. See
             -- the parallel comment in RmFmAvailability.loadFromXMLFile.
+            --
+            -- Cooldowns are not scrubbed: an ownership change already clears them,
+            -- they expire on day change, and sell cooldowns sit on owned land,
+            -- which this eligibility check always rejects.
             local farmland = g_farmlandManager:getFarmlandById(farmlandId)
             local isStale = farmland ~= nil
                 and not RmFmAvailability.isEligibleForAvailability(farmland)
@@ -1249,7 +1253,7 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
                 end
             end
 
-            -- Load cooldowns if present (skip whole block for stale farmlands)
+            -- Load cooldowns if present
             local j = 0
             while true do
                 local cdKey = string.format("%s.cooldown(%d)", entryKey, j)
@@ -1257,26 +1261,22 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
                     break
                 end
 
-                if isStale then
-                    skippedCooldowns = skippedCooldowns + 1
-                else
-                    local farmId = xmlFile:getValue(cdKey .. "#farmId")
-                    local remaining = xmlFile:getValue(cdKey .. "#remaining")
-                    local lastOutcome = xmlFile:getValue(cdKey .. "#lastOutcome")
+                local farmId = xmlFile:getValue(cdKey .. "#farmId")
+                local remaining = xmlFile:getValue(cdKey .. "#remaining")
+                local lastOutcome = xmlFile:getValue(cdKey .. "#lastOutcome")
 
-                    -- Skip expired cooldowns (near-zero residue treated as gone)
-                    if farmId ~= nil and remaining ~= nil and remaining > EPSILON then
-                        if RmNegotiationManager.cooldowns[farmlandId] == nil then
-                            RmNegotiationManager.cooldowns[farmlandId] = {}
-                        end
-                        RmNegotiationManager.cooldowns[farmlandId][farmId] = {
-                            remaining = remaining,
-                            lastOutcome = lastOutcome,
-                        }
-                        cooldownCount = cooldownCount + 1
-                        Log:trace("  NEG: Loaded cooldown farmland %d farm %d remaining=%.2f outcome=%s",
-                            farmlandId, farmId, remaining, tostring(lastOutcome))
+                -- Skip expired cooldowns (near-zero residue treated as gone)
+                if farmId ~= nil and remaining ~= nil and remaining > EPSILON then
+                    if RmNegotiationManager.cooldowns[farmlandId] == nil then
+                        RmNegotiationManager.cooldowns[farmlandId] = {}
                     end
+                    RmNegotiationManager.cooldowns[farmlandId][farmId] = {
+                        remaining = remaining,
+                        lastOutcome = lastOutcome,
+                    }
+                    cooldownCount = cooldownCount + 1
+                    Log:trace("  NEG: Loaded cooldown farmland %d farm %d remaining=%.2f outcome=%s",
+                        farmlandId, farmId, remaining, tostring(lastOutcome))
                 end
 
                 j = j + 1
@@ -1286,8 +1286,8 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
         i = i + 1
     end
 
-    Log:debug("NEG: Loaded %d profiles, %d cooldowns from %d farmland entries (stale skipped: %d profiles, %d cooldowns)",
-        profileCount, cooldownCount, i, skippedProfiles, skippedCooldowns)
+    Log:debug("NEG: Loaded %d profiles, %d cooldowns from %d farmland entries (stale profiles skipped: %d)",
+        profileCount, cooldownCount, i, skippedProfiles)
     Log:debug("Negotiation state loaded")
     Log:trace("<<< RmNegotiationManager.loadFromXMLFile()")
 end
