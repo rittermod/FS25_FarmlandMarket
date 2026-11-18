@@ -218,10 +218,9 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
     if RmNegotiationManager.pendingDeals[self.id] then
         Log:info("NEGOTIATION: Executing negotiated deal for farmland %d (bypass availability)", self.id)
         superFunc(self, connection)
-        -- Clear the flag on the authoritative server-inbound run. The base server-inbound run can
-        -- early-return without transferring (a mission is running, no/denied player, insufficient
-        -- funds, or the field is no longer unowned); in those cases setLandOwnership - hence
-        -- onOwnershipChanged, the usual clearer - never fires, so clear here regardless of transfer.
+        -- Clear the flag on the authoritative server-inbound run. A purchase can still fail there
+        -- without a transfer (for example, an active field mission blocks it); then
+        -- onOwnershipChanged, the usual clearer, never fires, so clear here regardless of transfer.
         -- Gating on `not connection:getIsServer()` leaves the nested listen-server loopback apply
         -- pass (getIsServer()==true, which still sees the flag and clears it via onOwnershipChanged
         -- while running superFunc -> setLandOwnership for the live PDA refresh) untouched.
@@ -685,7 +684,7 @@ end
 -- CONSOLE COMMANDS
 -- ============================================================================
 
---- Get owner name for a farmland (player farm or NPC)
+--- Get owner name for a farmland (player farm, else the NPC farmland:getNPC() reports)
 ---@param farmland table
 ---@return string ownerName
 local function getOwnerName(farmland)
@@ -693,18 +692,27 @@ local function getOwnerName(farmland)
     if farmland.farmId ~= nil and farmland.farmId ~= FarmlandManager.NO_OWNER_FARM_ID then
         local farm = g_farmManager:getFarmById(farmland.farmId)
         if farm ~= nil then
+            Log:trace("getOwnerName(farmland=%d): farm %d '%s'", farmland.id, farmland.farmId, farm.name)
             return farm.name
         end
-        return string.format("Farm %d", farmland.farmId)
+        local name = string.format("Farm %d", farmland.farmId)
+        Log:trace("getOwnerName(farmland=%d): farm %d not found, '%s'", farmland.id, farmland.farmId, name)
+        return name
     end
-    -- NPC-owned farmland
+    -- NPC-owned farmland. getNPC(), not npcIndex: a mod that overrides it (such as one
+    -- assigning land to named farmers) then names the same owner the negotiation dialog shows.
+    local npc = farmland:getNPC()
+    if npc ~= nil and npc.title ~= nil then
+        Log:trace("getOwnerName(farmland=%d): npc '%s'", farmland.id, npc.title)
+        return npc.title
+    end
     if farmland.npcIndex ~= nil and farmland.npcIndex > 0 then
-        local npc = g_npcManager:getNPCByIndex(farmland.npcIndex)
-        if npc ~= nil then
-            return npc.title
-        end
-        return string.format("NPC %d", farmland.npcIndex)
+        Log:warning("getOwnerName(farmland=%d): npcIndex %d has no titled NPC", farmland.id, farmland.npcIndex)
+        local name = string.format("NPC %d", farmland.npcIndex)
+        Log:trace("getOwnerName(farmland=%d): npc fallback '%s'", farmland.id, name)
+        return name
     end
+    Log:trace("getOwnerName(farmland=%d): no owner, no NPC", farmland.id)
     return "(unowned)"
 end
 
