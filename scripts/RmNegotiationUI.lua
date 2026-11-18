@@ -29,6 +29,7 @@ local Log = RmLogging.getLogger("FarmlandMarket")
 assert(RmNegotiationEngine.OUTCOME_DEAL ~= nil, "OUTCOME_DEAL is nil")
 assert(RmNegotiationEngine.OUTCOME_REJECTED ~= nil, "OUTCOME_REJECTED is nil")
 assert(RmNegotiationEngine.OUTCOME_DISMISSED ~= nil, "OUTCOME_DISMISSED is nil")
+assert(RmNegotiationEngine.OUTCOME_REFUSED ~= nil, "OUTCOME_REFUSED is nil")
 assert(RmNegotiationEngine.OUTCOME_NPC_WALKED ~= nil, "OUTCOME_NPC_WALKED is nil")
 assert(RmNegotiationManager.OUTCOME_WALKAWAY ~= nil, "OUTCOME_WALKAWAY is nil")
 assert(RmNegotiationEngine.MODE_LISTED_BUY ~= nil, "MODE_LISTED_BUY is nil")
@@ -355,6 +356,9 @@ function RmNegotiationUI.getCompletedMessage(snapshot, ownerName)
         return string.format(g_i18n:getText("rm_fm_neg_rejected"), name)
     elseif outcome == RmNegotiationEngine.OUTCOME_DISMISSED then
         return string.format(g_i18n:getText("rm_fm_neg_dismissed"), name)
+    elseif outcome == RmNegotiationEngine.OUTCOME_REFUSED then
+        Log:debug("NEGOTIATION: Refused message for %s", tostring(name))
+        return string.format(g_i18n:getText("rm_fm_neg_refused"), name)
     elseif outcome == RmNegotiationEngine.OUTCOME_NPC_WALKED then
         return g_i18n:getText("rm_fm_neg_npcWalked")
     elseif outcome == RmNegotiationManager.OUTCOME_WALKAWAY then
@@ -747,9 +751,8 @@ local function onClickSellInterceptor(self)
 end
 
 --- Patch contextActions callbacks on the live InGameMenuMapFrame instance.
---- Utils.overwrittenFunction on onClickBuy/onClickSell has no effect because the
---- button callbacks are captured as direct function references at GUI init time.
---- We patch the stored references on each frame open instead.
+--- Wrapping onClickBuy/onClickSell doesn't change what the buttons do, so the stored
+--- callbacks are patched on each frame open instead.
 InGameMenuMapFrame.onFrameOpen = Utils.appendedFunction(
     InGameMenuMapFrame.onFrameOpen,
     function(self)

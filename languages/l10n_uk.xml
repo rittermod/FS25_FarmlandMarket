@@ -55,6 +55,7 @@
         <text name="rm_fm_neg_dealSell" text="Згода! Ви продали поле за %s."/>
         <text name="rm_fm_neg_rejected" text="Ваша пропозиція була занадто низькою. %s більше не вестиме переговорів."/>
         <text name="rm_fm_neg_dismissed" text="%s зараз не зацікавлений у продажу."/>
+        <text name="rm_fm_neg_refused" text="%s won't sell: you have fallen out."/>
         <text name="rm_fm_neg_npcWalked" text="Покупець відмовився від угоди — ваша ціна була занадто високою."/>
         <text name="rm_fm_neg_walkedAway" text="Ви вийшли з переговорів."/>
         <text name="rm_fm_neg_ended" text="Переговори завершено."/>

@@ -55,6 +55,7 @@
         <text name="rm_fm_neg_dealSell" text="Abgemacht! Du hast das Feld für %s verkauft."/>
         <text name="rm_fm_neg_rejected" text="Dein Angebot war zu niedrig. %s wird nicht weiter verhandeln."/>
         <text name="rm_fm_neg_dismissed" text="%s hat kein Interesse, im Moment zu verkaufen."/>
+        <text name="rm_fm_neg_refused" text="%s won't sell: you have fallen out."/>
         <text name="rm_fm_neg_npcWalked" text="Der Käufer ist weg - dein Preis war zu hoch."/>
         <text name="rm_fm_neg_walkedAway" text="Du bist aus der Verhandlung ausgestiegen."/>
         <text name="rm_fm_neg_ended" text="Die Verhandlung ist beendet."/>

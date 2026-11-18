@@ -21,6 +21,14 @@ RmNegotiationEngine.OUTCOME_REJECTED = "rejected"
 RmNegotiationEngine.OUTCOME_FAILED = "failed"
 RmNegotiationEngine.OUTCOME_DISMISSED = "dismissed"
 RmNegotiationEngine.OUTCOME_NPC_WALKED = "npc_walked"
+RmNegotiationEngine.OUTCOME_REFUSED = "refused"
+
+-- How far a relationship moves a hidden number at full strength (factor +1 or -1)
+RmNegotiationEngine.RELATIONSHIP_SWING = 0.5
+
+-- Park-Miller MINSTD generator for the per-farmer temperament
+RmNegotiationEngine.TEMPERAMENT_MODULUS = 2147483647
+RmNegotiationEngine.TEMPERAMENT_MULTIPLIER = 48271
 
 -- Mode constants
 RmNegotiationEngine.MODE_LISTED_BUY = "listed_buy"
@@ -217,9 +225,11 @@ end
 
 ---@param preset string "easy"|"normal"|"hard"|"harder"|"realistic"
 ---@param marketValue number Current market price (must be > 0)
+---@param relationship table|nil { factor = number, temperament = number|nil }; nil draws today's unshaped seller
 ---@return table|nil sellerProfile Flat seller profile table, {dismissed=true} if seller refuses, or nil on invalid input
-function RmNegotiationEngine.generateUnlistedSeller(preset, marketValue)
-    Log:trace(">>> generateUnlistedSeller(preset=%s, marketValue=%s)", tostring(preset), tostring(marketValue))
+function RmNegotiationEngine.generateUnlistedSeller(preset, marketValue, relationship)
+    Log:trace(">>> generateUnlistedSeller(preset=%s, marketValue=%s, relationship=%s)",
+        tostring(preset), tostring(marketValue), tostring(relationship ~= nil))
 
     if not RmNegotiationEngine.isValidPreset(preset) then
         Log:warning("Invalid preset: %s", tostring(preset))
@@ -232,9 +242,18 @@ function RmNegotiationEngine.generateUnlistedSeller(preset, marketValue)
 
     local params = RmNegotiationEngine.UNLISTED_BUY
 
-    -- Dismissal gate
-    if math.random() < params.dismissByPreset[preset] then
-        Log:debug("NEGOTIATION: Seller dismissed approach (preset=%s)", preset)
+    -- Dismissal gate: the relationship shapes the chance, never the number of draws
+    local baseDismissChance = params.dismissByPreset[preset]
+    local dismissChance = baseDismissChance
+    if relationship ~= nil then
+        dismissChance = RmNegotiationEngine.shapeDismissChance(baseDismissChance, relationship.factor)
+        Log:trace("  generateUnlistedSeller: dismissal chance shaped by factor %s", tostring(relationship.factor))
+    else
+        Log:trace("  generateUnlistedSeller: no relationship, preset dismissal chance")
+    end
+    if math.random() < dismissChance then
+        Log:debug("NEGOTIATION: Seller dismissed approach (preset=%s, chance %.3f -> %.3f)",
+            preset, baseDismissChance, dismissChance)
         return { dismissed = true }
     end
 
@@ -259,6 +278,19 @@ function RmNegotiationEngine.generateUnlistedSeller(preset, marketValue)
 
     Log:debug("NEGOTIATION: Generated unlisted seller: demand=%.0f reservation=%.0f stubbornness=%.2f",
         demandPrice, reservation, stubbornness)
+
+    if relationship ~= nil then
+        local shaped = RmNegotiationEngine.shapeSeller(profile, relationship.factor, relationship.temperament)
+        Log:debug("NEGOTIATION: Shaped unlisted seller (factor %.3f): demand %.0f -> %.0f, reservation %.0f -> %.0f, "
+            .. "floor %.0f -> %.0f, stubbornness %.2f -> %.2f, dismissal %.3f -> %.3f",
+            relationship.factor, profile.demandPrice, shaped.demandPrice, profile.reservation, shaped.reservation,
+            profile.rejectFloor, shaped.rejectFloor, profile.stubbornness, shaped.stubbornness,
+            baseDismissChance, dismissChance)
+        profile = shaped
+    else
+        Log:trace("  generateUnlistedSeller: no relationship, profile unshaped")
+    end
+
     Log:trace("<<< generateUnlistedSeller")
     return profile
 end
@@ -304,6 +336,140 @@ function RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
         npcOpening, npcReservation, npcStubbornness)
     Log:trace("<<< generateNpcBuyer")
     return profile
+end
+
+-- =============================================================================
+-- RELATIONSHIP SHAPING FUNCTIONS (public)
+-- =============================================================================
+
+--- One shared factor in [-1, 1]: +1 at maxScore, 0 at 0, -1 at refusesBelow.
+---@param score number the farm's relationship score with the farmer
+---@param maxScore number the best score possible
+---@param refusesBelow number the score below which the farmer refuses (negative)
+---@return number factor
+function RmNegotiationEngine.relationshipFactor(score, maxScore, refusesBelow)
+    Log:trace(">>> relationshipFactor(score=%s, maxScore=%s, refusesBelow=%s)",
+        tostring(score), tostring(maxScore), tostring(refusesBelow))
+    local factor
+    if score >= 0 then
+        factor = math.min(score / maxScore, 1)
+        Log:trace("  relationshipFactor: non-negative score, scaled by maxScore")
+    else
+        factor = math.max(score / math.abs(refusesBelow), -1)
+        Log:trace("  relationshipFactor: negative score, scaled by refusesBelow")
+    end
+    Log:trace("<<< relationshipFactor = %s", tostring(factor))
+    return factor
+end
+
+--- Whether a farmer refuses to deal at all: strictly below the refusal threshold.
+---@param score number the farm's relationship score with the farmer
+---@param refusesBelow number the refusal threshold
+---@return boolean refused
+function RmNegotiationEngine.isRefused(score, refusesBelow)
+    local refused = score < refusesBelow
+    Log:trace("<<< isRefused(score=%s, refusesBelow=%s) = %s", tostring(score), tostring(refusesBelow),
+        tostring(refused))
+    return refused
+end
+
+--- A farmer's fixed temperament in [0, 1); integer steps below 2^47, so exact on every machine.
+---@param farmerId number the farmer's id (a positive integer)
+---@param salt number the savegame's temperament salt, an integer in [1, TEMPERAMENT_MODULUS - 1]
+---@return number unit
+function RmNegotiationEngine.farmerTemperament(farmerId, salt)
+    local modulus = RmNegotiationEngine.TEMPERAMENT_MODULUS
+    local multiplier = RmNegotiationEngine.TEMPERAMENT_MULTIPLIER
+    local state = salt
+    for _ = 1, farmerId do
+        state = (state * multiplier) % modulus
+    end
+    local unit = (state - 1) / (modulus - 1)
+    Log:trace("<<< farmerTemperament(farmerId=%s, salt=%s) = %s", tostring(farmerId), tostring(salt), tostring(unit))
+    return unit
+end
+
+--- Map a temperament unit onto a seller mode's stubbornness range (base - range .. base + range).
+---@param mode string MODE_LISTED_BUY or MODE_UNLISTED_BUY
+---@param unit number temperament in [0, 1)
+---@return number stubbornness
+function RmNegotiationEngine.temperamentStubbornness(mode, unit)
+    local params = RmNegotiationEngine.LISTED_BUY
+    if mode == RmNegotiationEngine.MODE_UNLISTED_BUY then
+        params = RmNegotiationEngine.UNLISTED_BUY
+        Log:trace("  temperamentStubbornness: unlisted range")
+    else
+        Log:trace("  temperamentStubbornness: listed range")
+    end
+    local base, range = params.stubbornness.base, params.stubbornness.range
+    local stubbornness = base - range + 2 * range * unit
+    Log:trace("<<< temperamentStubbornness(mode=%s, unit=%s) = %s", tostring(mode), tostring(unit),
+        tostring(stubbornness))
+    return stubbornness
+end
+
+--- Move a chance-like number toward 0 for a good relationship, toward 1 (never reaching it) for a bad one.
+---@param chance number a value in [0, 1)
+---@param factor number relationship factor in [-1, 1]
+---@return number shaped
+function RmNegotiationEngine.shapeDismissChance(chance, factor)
+    local swing = RmNegotiationEngine.RELATIONSHIP_SWING
+    local shaped
+    if factor >= 0 then
+        shaped = chance * (1 - swing * factor)
+        Log:trace("  shapeDismissChance: good relationship, toward 0")
+    else
+        shaped = chance + (1 - chance) * swing * (-factor)
+        Log:trace("  shapeDismissChance: bad relationship, toward 1")
+    end
+    Log:trace("<<< shapeDismissChance(chance=%s, factor=%s) = %s", tostring(chance), tostring(factor), tostring(shaped))
+    return shaped
+end
+
+--- A new seller profile shifted by the relationship; the input is untouched and a listing price never moves.
+---@param profile table seller profile from generateListedSeller or generateUnlistedSeller
+---@param factor number relationship factor in [-1, 1]
+---@param unit number|nil the farmer's temperament; nil keeps the profile's own stubbornness
+---@return table shaped
+function RmNegotiationEngine.shapeSeller(profile, factor, unit)
+    Log:trace(">>> shapeSeller(mode=%s, factor=%s, unit=%s)", tostring(profile.mode), tostring(factor), tostring(unit))
+    local swing = RmNegotiationEngine.RELATIONSHIP_SWING
+    local shaped = {}
+    for key, value in pairs(profile) do
+        shaped[key] = value
+    end
+
+    if profile.mode == RmNegotiationEngine.MODE_UNLISTED_BUY then
+        -- Scale the markup over market value; at factor 0 this returns the anchor bit for bit
+        local anchor = profile.anchorPrice
+        local newAnchor = profile.marketValue + (anchor - profile.marketValue) * (1 - swing * factor)
+        local scale = newAnchor / anchor
+        shaped.anchorPrice = newAnchor
+        shaped.demandPrice = newAnchor
+        shaped.reservation = profile.reservation * scale
+        shaped.rejectFloor = profile.rejectFloor * scale
+        Log:trace("  shapeSeller: unlisted demand %s -> %s", tostring(anchor), tostring(newAnchor))
+    else
+        Log:trace("  shapeSeller: listed, anchor unchanged")
+    end
+
+    local k = 1 + swing * factor
+    local anchor = shaped.anchorPrice
+    shaped.reservation = anchor - (anchor - shaped.reservation) * k
+    shaped.rejectFloor = anchor - (anchor - shaped.rejectFloor) * k
+
+    local stubbornness = profile.stubbornness
+    if unit ~= nil then
+        stubbornness = RmNegotiationEngine.temperamentStubbornness(profile.mode, unit)
+        Log:trace("  shapeSeller: stubbornness from temperament %s", tostring(stubbornness))
+    else
+        Log:trace("  shapeSeller: no temperament, profile stubbornness kept")
+    end
+    shaped.stubbornness = clamp(RmNegotiationEngine.shapeDismissChance(stubbornness, factor), 0.1, 0.95)
+
+    Log:trace("<<< shapeSeller: reservation=%s rejectFloor=%s stubbornness=%s", tostring(shaped.reservation),
+        tostring(shaped.rejectFloor), tostring(shaped.stubbornness))
+    return shaped
 end
 
 -- =============================================================================

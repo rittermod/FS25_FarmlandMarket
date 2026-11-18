@@ -4,11 +4,14 @@
 
     Answers two questions for FarmlandMarket: which Contractor farmer holds a
     farmland, and how a farm stands with that farmer. It reaches The Contractor
-    through g_currentMission.TheContractor and calls only hasGenerated,
-    getHolder, getScore and getBand - nothing that changes The Contractor's
-    state. Whenever it cannot answer (The Contractor absent, a function
-    missing, farmers not made yet, or a call that raised earlier this session)
-    it answers nil, and FarmlandMarket keeps its own behavior.
+    through g_currentMission.TheContractor and changes none of its state.
+    Contractor public API (stable): Farmers:getHolder, Relationships:getScore.
+    Contractor internal (may change): Farmers:hasGenerated, Relationships.getBand,
+    Relationships.REFUSES_BELOW, Relationships.MAX_SCORE.
+    Whenever it cannot answer (The Contractor absent, a function missing,
+    farmers not made yet, or a call that raised earlier this session) it
+    answers nil, and FarmlandMarket keeps its own behavior; a missing constant
+    falls back to The Contractor's 0.0.0.2 value.
 
     Never save the farmer ids it returns: resolve the farmer from the farmland
     id each time.
@@ -35,8 +38,14 @@ RmContractorBridge.REQUIRED = {
 RmContractorBridge.REASON_NOT_DETECTED = "not detected"
 RmContractorBridge.REASON_NOT_INSTALLED = "not installed"
 
+-- The Contractor's relationship constants as of 0.0.0.2, used when a read finds none
+RmContractorBridge.FALLBACK_REFUSES_BELOW = -40
+RmContractorBridge.FALLBACK_MAX_SCORE = 100
+
 RmContractorBridge.available = false
 RmContractorBridge.reason = RmContractorBridge.REASON_NOT_DETECTED
+RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
+RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
 
 -- ============================================================================
 -- INTERNAL HELPERS
@@ -80,6 +89,7 @@ local function findHolder(queryName, farmlandId, farmId)
 
     local context = string.format("farmlandId=%s farmId=%s", tostring(farmlandId), tostring(farmId))
 
+    -- Contractor internal (may change): hasGenerated; if it disappears, detect turns the adapter off.
     local okGenerated, generated = callContractor("Farmers:hasGenerated", context, function()
         return contractor.Farmers:hasGenerated()
     end)
@@ -92,6 +102,7 @@ local function findHolder(queryName, farmlandId, farmId)
         return nil, nil
     end
 
+    -- Contractor public API (stable): getHolder; if it disappears, detect turns the adapter off.
     local okHolder, person = callContractor("Farmers:getHolder", context, function()
         return contractor.Farmers:getHolder(farmlandId)
     end)
@@ -105,6 +116,23 @@ local function findHolder(queryName, farmlandId, farmId)
     end
 
     return person, contractor
+end
+
+--- Read one relationship constant, or keep its fallback with a WARNING naming it.
+---@param relationships table The Contractor's Relationships object
+---@param name string the constant's name
+---@param fallback number the value kept when the read is missing or of the wrong sign
+---@param isValid function predicate on the read value
+---@return number value
+local function readConstant(relationships, name, fallback, isValid)
+    local value = relationships[name]
+    if isValid(value) then
+        Log:debug("CONTRACTOR: Relationships.%s = %s", name, tostring(value))
+        return value
+    end
+    Log:warning("Contractor adapter: Relationships.%s is %s, not a number of the expected sign - using %s",
+        name, tostring(value), tostring(fallback))
+    return fallback
 end
 
 -- ============================================================================
@@ -125,6 +153,8 @@ end
 function RmContractorBridge.detect()
     Log:trace(">>> RmContractorBridge.detect()")
     RmContractorBridge.available = false
+    RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
+    RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
 
     local contractor = RmContractorBridge.getContractor()
     if contractor == nil then
@@ -150,6 +180,17 @@ function RmContractorBridge.detect()
         return false
     end
 
+    -- Contractor internal (may change): REFUSES_BELOW; if it disappears, FM uses its fallback.
+    RmContractorBridge.refusesBelow = readConstant(contractor.Relationships, "REFUSES_BELOW",
+        RmContractorBridge.FALLBACK_REFUSES_BELOW, function(value)
+            return type(value) == "number" and value < 0
+        end)
+    -- Contractor internal (may change): MAX_SCORE; if it disappears, FM uses its fallback.
+    RmContractorBridge.maxScore = readConstant(contractor.Relationships, "MAX_SCORE",
+        RmContractorBridge.FALLBACK_MAX_SCORE, function(value)
+            return type(value) == "number" and value > 0
+        end)
+
     RmContractorBridge.available = true
     RmContractorBridge.reason = nil
     Log:info("Contractor adapter: The Contractor detected - farmer and relationship reads on")
@@ -161,7 +202,21 @@ end
 function RmContractorBridge.reset()
     RmContractorBridge.available = false
     RmContractorBridge.reason = RmContractorBridge.REASON_NOT_DETECTED
+    RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
+    RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
     Log:debug("Contractor adapter: reset")
+end
+
+--- The score below which a farmer refuses to deal: The Contractor's, or the fallback.
+---@return number refusesBelow
+function RmContractorBridge.getRefusesBelow()
+    return RmContractorBridge.refusesBelow
+end
+
+--- The best relationship score: The Contractor's, or the fallback.
+---@return number maxScore
+function RmContractorBridge.getMaxScore()
+    return RmContractorBridge.maxScore
 end
 
 --- Whether the queries can answer this session.
@@ -197,7 +252,7 @@ end
 --- A farm's relationship with the farmer holding a farmland.
 ---@param farmId number the player's farm id
 ---@param farmlandId number farmland id
----@return table|nil relationship { score = number, band = string }; nil when no farmer or unavailable
+---@return table|nil relationship { score = number, band = string, farmerId = number }; nil when none or unavailable
 function RmContractorBridge.getRelationship(farmId, farmlandId)
     Log:trace(">>> RmContractorBridge.getRelationship(%s, %s)", tostring(farmId), tostring(farmlandId))
     local person, contractor = findHolder("getRelationship", farmlandId, farmId)
@@ -208,6 +263,7 @@ function RmContractorBridge.getRelationship(farmId, farmlandId)
 
     local context = string.format("farmlandId=%s farmId=%s", tostring(farmlandId), tostring(farmId))
 
+    -- Contractor public API (stable): getScore; if it disappears, detect turns the adapter off.
     local okScore, score = callContractor("Relationships:getScore", context, function()
         return contractor.Relationships:getScore(farmId, person.id)
     end)
@@ -216,7 +272,7 @@ function RmContractorBridge.getRelationship(farmId, farmlandId)
         return nil
     end
 
-    -- The band table's shape is not part of The Contractor's public API, so read it inside the guard.
+    -- Contractor internal (may change): getBand; if it disappears, detect turns the adapter off.
     local okBand, band = callContractor("Relationships.getBand", context, function()
         return contractor.Relationships.getBand(score).key
     end)
@@ -225,7 +281,7 @@ function RmContractorBridge.getRelationship(farmId, farmlandId)
         return nil
     end
 
-    local relationship = { score = score, band = band }
+    local relationship = { score = score, band = band, farmerId = person.id }
     Log:debug("CONTRACTOR: farm %s and farmer #%s on farmland %s: score %s, band %s",
         tostring(farmId), tostring(person.id), tostring(farmlandId), tostring(score), tostring(band))
     Log:trace("<<< RmContractorBridge.getRelationship = %s / %s", tostring(score), tostring(band))

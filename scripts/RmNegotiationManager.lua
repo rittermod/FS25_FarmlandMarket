@@ -7,6 +7,7 @@
     - Fractional-period cooldowns after failed negotiations (tick per day)
     - Farmland locks for multiplayer exclusivity
     - Cached seller profiles for listed farmlands
+    - A Contractor farmer's relationship: refusal, or a session copy of the seller shaped by it
     - Host/client routing via network events
     - Console commands for testing
 
@@ -83,6 +84,9 @@ RmNegotiationManager.pendingDeals = {}
 
 -- Guard flag: true during savegame load
 RmNegotiationManager.loadingFromSavegame = false
+
+-- Per-savegame salt for Contractor farmers' temperaments: rolled at initialize, replaced by the saved one
+RmNegotiationManager.temperamentSalt = nil
 
 -- =============================================================================
 -- INTERNAL HELPERS (local)
@@ -237,6 +241,60 @@ local function completeSession(farmId, outcome, price)
     return snapshot
 end
 
+--- The negotiating farm's standing with the Contractor farmer holding a farmland.
+---@param farmlandId number
+---@param farmId number
+---@return table|nil relationship { farmerId, score, factor, refused, refusesBelow }; nil when no farmer holds it
+local function readRelationship(farmlandId, farmId)
+    local contractorRelationship = RmContractorBridge.getRelationship(farmId, farmlandId)
+    if contractorRelationship == nil then
+        Log:trace("  readRelationship: no farmer relationship for farmland %s farm %s",
+            tostring(farmlandId), tostring(farmId))
+        return nil
+    end
+    local refusesBelow = RmContractorBridge.getRefusesBelow()
+    local maxScore = RmContractorBridge.getMaxScore()
+    local score = contractorRelationship.score
+    local relationship = {
+        farmerId = contractorRelationship.farmerId,
+        score = score,
+        factor = RmNegotiationEngine.relationshipFactor(score, maxScore, refusesBelow),
+        refused = RmNegotiationEngine.isRefused(score, refusesBelow),
+        refusesBelow = refusesBelow,
+    }
+    Log:debug("NEGOTIATION: Relationship farmland %s farm %s farmer #%s: score %s, factor %s, refused %s",
+        tostring(farmlandId), tostring(farmId), tostring(relationship.farmerId), tostring(score),
+        tostring(relationship.factor), tostring(relationship.refused))
+    return relationship
+end
+
+--- Completed snapshot for a farmer who refuses to deal; touches no session, lock or cooldown.
+---@param farmlandId number
+---@param farmId number
+---@param mode string MODE_LISTED_BUY or MODE_UNLISTED_BUY
+---@param relationship table from readRelationship
+---@return table snapshot
+local function refusedSnapshot(farmlandId, farmId, mode, relationship)
+    Log:info("NEGOTIATION: Farmer #%s refused farm %s on farmland %s (score %s below %s)",
+        tostring(relationship.farmerId), tostring(farmId), tostring(farmlandId), tostring(relationship.score),
+        tostring(relationship.refusesBelow))
+    return {
+        farmlandId = farmlandId,
+        mode = mode,
+        round = 0,
+        state = "completed",
+        lastCounter = nil,
+        lastOffer = nil,
+        lastAsk = nil,
+        offers = {},
+        pendingProposal = nil,
+        outcome = RmNegotiationEngine.OUTCOME_REFUSED,
+        finalPrice = nil,
+        anchorPrice = nil,
+        rejectFloor = nil,
+    }
+end
+
 -- =============================================================================
 -- PUBLIC API - canNegotiate
 -- =============================================================================
@@ -285,6 +343,12 @@ local function doStartListedBuy(farmlandId, farmId)
     local farmland = g_farmlandManager:getFarmlandById(farmlandId)
     if farmland == nil then return nil, "invalid_farmland" end
     if farmland.farmId == farmId then return nil, "own_farmland" end
+    -- A refusal comes before cancelSession, so it leaves the farm's open session alone
+    local relationship = readRelationship(farmlandId, farmId)
+    if relationship ~= nil and relationship.refused then
+        Log:trace("<<< doStartListedBuy: refused")
+        return refusedSnapshot(farmlandId, farmId, RmNegotiationEngine.MODE_LISTED_BUY, relationship)
+    end
     -- Cancel any existing session for this farm (no cooldown)
     RmNegotiationManager.cancelSession(farmId)
     -- Get or generate seller profile
@@ -299,12 +363,25 @@ local function doStartListedBuy(farmlandId, farmId)
     else
         Log:debug("NEGOTIATION: Reusing cached seller profile for farmland %d", farmlandId)
     end
+    -- The cached profile stays neutral and shared; a farmer's relationship shapes a session-local copy
+    local sessionProfile = profile
+    if relationship ~= nil then
+        local unit = RmNegotiationEngine.farmerTemperament(relationship.farmerId, RmNegotiationManager.temperamentSalt)
+        sessionProfile = RmNegotiationEngine.shapeSeller(profile, relationship.factor, unit)
+        Log:debug("NEGOTIATION: Shaped listed seller farmland %d farm %d farmer #%s: score %s factor %.3f, "
+            .. "reservation %.0f -> %.0f, floor %.0f -> %.0f, stubbornness %.2f -> %.2f",
+            farmlandId, farmId, tostring(relationship.farmerId), tostring(relationship.score), relationship.factor,
+            profile.reservation, sessionProfile.reservation, profile.rejectFloor, sessionProfile.rejectFloor,
+            profile.stubbornness, sessionProfile.stubbornness)
+    else
+        Log:trace("  doStartListedBuy: no farmer, cached profile as is")
+    end
     -- Create session
     RmNegotiationManager.sessions[farmId] = {
         farmlandId = farmlandId,
         farmId = farmId,
         mode = RmNegotiationEngine.MODE_LISTED_BUY,
-        profile = profile,
+        profile = sessionProfile,
         round = 1,
         state = "active",
         lastCounter = nil,
@@ -349,13 +426,39 @@ local function doStartUnlistedBuy(farmlandId, farmId)
     local farmland = g_farmlandManager:getFarmlandById(farmlandId)
     if farmland == nil then return nil, "invalid_farmland" end
     if farmland.farmId == farmId then return nil, "own_farmland" end
+    -- A refusal comes before cancelSession, so it leaves the farm's open session alone
+    local relationship = readRelationship(farmlandId, farmId)
+    if relationship ~= nil and relationship.refused then
+        Log:trace("<<< doStartUnlistedBuy: refused")
+        return refusedSnapshot(farmlandId, farmId, RmNegotiationEngine.MODE_UNLISTED_BUY, relationship)
+    end
     -- Cancel any existing session
     RmNegotiationManager.cancelSession(farmId)
     -- Generate fresh profile (unlisted = new person each time)
     local marketValue = getMarketValue(farmlandId)
     if marketValue == nil or marketValue <= 0 then return nil, "invalid_market_value" end
-    local result = RmNegotiationEngine.generateUnlistedSeller(getPreset(), marketValue)
+    local shaping = nil
+    if relationship ~= nil then
+        shaping = {
+            factor = relationship.factor,
+            temperament = RmNegotiationEngine.farmerTemperament(relationship.farmerId,
+                RmNegotiationManager.temperamentSalt),
+        }
+        Log:debug("NEGOTIATION: Unlisted seller farmland %d farm %d farmer #%s: score %s factor %.3f temperament %.3f",
+            farmlandId, farmId, tostring(relationship.farmerId), tostring(relationship.score), shaping.factor,
+            shaping.temperament)
+    else
+        Log:trace("  doStartUnlistedBuy: no farmer, unshaped seller")
+    end
+    local result = RmNegotiationEngine.generateUnlistedSeller(getPreset(), marketValue, shaping)
     if result == nil then return nil, "profile_generation_failed" end
+    if shaping ~= nil and not result.dismissed then
+        Log:debug("NEGOTIATION: Shaped unlisted seller farmland %d: demand %.0f, reservation %.0f, floor %.0f, "
+            .. "stubbornness %.2f", farmlandId, result.demandPrice, result.reservation, result.rejectFloor,
+            result.stubbornness)
+    else
+        Log:trace("  doStartUnlistedBuy: no shaped profile to log (no farmer, or the seller dismissed)")
+    end
     -- Check dismissal
     if result.dismissed then
         Log:info("NEGOTIATION: Dismissed by unlisted seller farmland %d", farmlandId)
@@ -819,6 +922,12 @@ function RmNegotiationManager.cancelSession(farmId, userInitiated)
     return true
 end
 
+--- This savegame's salt for Contractor farmers' temperaments (server only; nil before initialize).
+---@return number|nil salt
+function RmNegotiationManager.getTemperamentSalt()
+    return RmNegotiationManager.temperamentSalt
+end
+
 --- Get sanitized snapshot of current session.
 ---@param farmId number
 ---@return table|nil snapshot
@@ -1054,6 +1163,13 @@ function RmNegotiationManager.initialize()
         Log:trace("<<< initialize() [not server]")
         return
     end
+    -- Roll on every build, before the console gate; loadFromXMLFile replaces it with the saved salt
+    if RmNegotiationManager.temperamentSalt == nil then
+        RmNegotiationManager.temperamentSalt = math.random(1, RmNegotiationEngine.TEMPERAMENT_MODULUS - 1)
+        Log:debug("NegotiationManager: temperament salt rolled (%s)", tostring(RmNegotiationManager.temperamentSalt))
+    else
+        Log:trace("  initialize: temperament salt already set, kept")
+    end
     -- Subscribe to day changes (cooldowns tick fractionally per day; a full
     -- period still nets -1.0 - see onDayChanged)
     g_messageCenter:subscribe(MessageType.DAY_CHANGED, RmNegotiationManager.onDayChanged, RmNegotiationManager)
@@ -1103,6 +1219,7 @@ function RmNegotiationManager.cleanup()
     RmNegotiationManager.locks = {}
     RmNegotiationManager.sellerProfiles = {}
     RmNegotiationManager.pendingDeals = {}
+    RmNegotiationManager.temperamentSalt = nil
     Log:debug("NegotiationManager cleaned up")
     Log:trace("<<< RmNegotiationManager.cleanup()")
 end
@@ -1173,6 +1290,13 @@ function RmNegotiationManager.saveToXMLFile(xmlFile)
         i = i + 1
     end
 
+    if RmNegotiationManager.temperamentSalt ~= nil then
+        xmlFile:setValue(key .. "#temperamentSalt", RmNegotiationManager.temperamentSalt)
+        Log:debug("NEG: Saved temperament salt %s", tostring(RmNegotiationManager.temperamentSalt))
+    else
+        Log:trace("  NEG: No temperament salt to save")
+    end
+
     Log:debug("NEG: Saved %d profiles, %d cooldowns across %d farmlands", profileCount, cooldownCount, i)
     Log:debug("Negotiation state saved")
     Log:trace("<<< RmNegotiationManager.saveToXMLFile()")
@@ -1191,6 +1315,23 @@ function RmNegotiationManager.loadFromXMLFile(xmlFile)
     local key = "rmFarmlandMarket.negotiations"
     local i = 0
     local profileCount, cooldownCount, skippedProfiles = 0, 0, 0
+
+    -- An old save carries no salt: the one initialize rolled is kept and written on the next save
+    local saltKey = key .. "#temperamentSalt"
+    if xmlFile:hasProperty(saltKey) then
+        local savedSalt = xmlFile:getValue(saltKey)
+        local maxSalt = RmNegotiationEngine.TEMPERAMENT_MODULUS - 1
+        if type(savedSalt) == "number" and savedSalt == math.floor(savedSalt) and savedSalt >= 1
+                and savedSalt <= maxSalt then
+            RmNegotiationManager.temperamentSalt = savedSalt
+            Log:debug("NEG: Loaded temperament salt %s", tostring(savedSalt))
+        else
+            Log:warning("NEG: Ignoring saved temperament salt %s (not an integer in 1..%s) - keeping %s",
+                tostring(savedSalt), tostring(maxSalt), tostring(RmNegotiationManager.temperamentSalt))
+        end
+    else
+        Log:trace("  NEG: No saved temperament salt, keeping %s", tostring(RmNegotiationManager.temperamentSalt))
+    end
 
     while true do
         local entryKey = string.format("%s.farmland(%d)", key, i)
@@ -1315,6 +1456,10 @@ function RmNegotiationManager:consoleStartNegotiation(farmlandIdStr)
     end
     if snapshot.outcome == RmNegotiationEngine.OUTCOME_DISMISSED then
         return string.format("Farmland %d: Seller dismissed your approach. Cooldown active.", farmlandId)
+    end
+    if snapshot.outcome == RmNegotiationEngine.OUTCOME_REFUSED then
+        return string.format("Farmland %d: Farmer refused to negotiate (relationship below threshold). No cooldown.",
+            farmlandId)
     end
     return string.format("Farmland %d: Negotiation started (%s). Anchor=%.0f RejectFloor=%.0f",
         farmlandId, snapshot.mode, snapshot.anchorPrice or 0, snapshot.rejectFloor or 0)

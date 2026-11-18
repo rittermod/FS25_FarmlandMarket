@@ -218,12 +218,11 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
     if RmNegotiationManager.pendingDeals[self.id] then
         Log:info("NEGOTIATION: Executing negotiated deal for farmland %d (bypass availability)", self.id)
         superFunc(self, connection)
-        -- Clear the flag on the authoritative server-inbound run. A purchase can still fail there
-        -- without a transfer (for example, an active field mission blocks it); then
-        -- onOwnershipChanged, the usual clearer, never fires, so clear here regardless of transfer.
-        -- Gating on `not connection:getIsServer()` leaves the nested listen-server loopback apply
-        -- pass (getIsServer()==true, which still sees the flag and clears it via onOwnershipChanged
-        -- while running superFunc -> setLandOwnership for the live PDA refresh) untouched.
+        -- Clear the flag on the server's run of the client's request: a purchase can fail there
+        -- without a transfer (for example, an active field mission blocks it), and
+        -- onOwnershipChanged, the usual clearer, then never fires. A listen server runs the event
+        -- again to apply the purchase locally; that run still sees the flag, and
+        -- onOwnershipChanged clears it.
         if not connection:getIsServer() then
             RmNegotiationManager.pendingDeals[self.id] = nil
         end
@@ -231,10 +230,9 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
         return
     end
 
-    -- Availability gate: enforce only on the server-inbound run (authoritative rejection).
-    -- In run(), connection:getIsServer()==false means the server is receiving this from a
-    -- client; ==true is an apply node (buyer, bystanders, server loopback) that must still
-    -- reach superFunc so setLandOwnership refreshes ownership and the PDA/map overlay live.
+    -- Availability gate: only on the server's run of a client's request. The runs that apply
+    -- the purchase on each machine (buyer, other players, the listen server itself) must go
+    -- through, or ownership and the map don't refresh live.
     if not connection:getIsServer() and RmFmSettings.isAvailabilityEnabled() then
         if not RmFmAvailability.isForSale(self.id) then
             Log:warning("Purchase rejected: farmland %d not available for sale", self.id)
@@ -1010,7 +1008,9 @@ function RmFarmlandMarket.registerXmlSchema()
     schema:register(XMLValueType.INT, entryPath .. "#expiryDay", "Expiry day")
     schema:register(XMLValueType.INT, entryPath .. "#listingDay", "Listing day")
 
-    -- Negotiations: seller profiles + cooldowns
+    -- Negotiations: temperament salt, seller profiles + cooldowns
+    schema:register(XMLValueType.INT, "rmFarmlandMarket.negotiations#temperamentSalt",
+        "Salt for Contractor farmers' temperaments")
     local negPath = "rmFarmlandMarket.negotiations.farmland(?)"
     schema:register(XMLValueType.INT, negPath .. "#id", "Farmland ID")
     schema:register(XMLValueType.STRING, negPath .. ".sellerProfile#mode", "Profile mode")
