@@ -219,7 +219,7 @@ local function completeSession(farmId, outcome, price)
     session.outcome = outcome
     session.finalPrice = price
 
-    -- Set pendingDeals for buy deals (bypass availability check in FarmlandStateEvent)
+    -- Set pendingDeals for buy deals (bypass the buy refusal check in FarmlandStateEvent)
     if outcome == RmNegotiationEngine.OUTCOME_DEAL
        and session.mode ~= RmNegotiationEngine.MODE_SELL then
         RmNegotiationManager.pendingDeals[session.farmlandId] = true
@@ -309,6 +309,11 @@ function RmNegotiationManager.canNegotiate(farmlandId, farmId)
     if g_farmlandManager:getFarmlandById(farmlandId) == nil then
         Log:trace("<<< canNegotiate = false (invalid_farmland)")
         return false, "invalid_farmland"
+    end
+    -- A farmer's farmyard is never for sale, whatever the availability setting
+    if RmFmAvailability.isFarmerYard(farmlandId) then
+        Log:trace("<<< canNegotiate = false (farmer_yard)")
+        return false, "farmer_yard"
     end
     -- 2. Lock check: locked by someone else?
     local lockHolder = RmNegotiationManager.locks[farmlandId]

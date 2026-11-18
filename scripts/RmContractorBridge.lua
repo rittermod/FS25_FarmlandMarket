@@ -2,11 +2,13 @@
     RmContractorBridge.lua
     Read-only adapter for The Contractor (FS25_TheContractor).
 
-    Answers two questions for FarmlandMarket: which Contractor farmer holds a
-    farmland, and how a farm stands with that farmer. It reaches The Contractor
-    through g_currentMission.TheContractor and changes none of its state.
+    Answers three questions for FarmlandMarket: which Contractor farmer holds a
+    farmland, how a farm stands with that farmer, and whose farmyard a farmland
+    is. It reaches The Contractor through g_currentMission.TheContractor and
+    changes none of its state.
     Contractor public API (stable): Farmers:getHolder, Relationships:getScore.
-    Contractor internal (may change): Farmers:hasGenerated, Relationships.getBand,
+    Contractor internal (may change): Farmers:getFarmers, a farmer's yardFarmlandId,
+    Farmers:hasGenerated, Relationships.getBand,
     Relationships.REFUSES_BELOW, Relationships.MAX_SCORE.
     Whenever it cannot answer (The Contractor absent, a function missing,
     farmers not made yet, or a call that raised earlier this session) it
@@ -43,6 +45,8 @@ RmContractorBridge.FALLBACK_REFUSES_BELOW = -40
 RmContractorBridge.FALLBACK_MAX_SCORE = 100
 
 RmContractorBridge.available = false
+-- Yard reads need Farmers:getFarmers, which detection does not require
+RmContractorBridge.yardReadsAvailable = false
 RmContractorBridge.reason = RmContractorBridge.REASON_NOT_DETECTED
 RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
 RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
@@ -69,25 +73,21 @@ local function callContractor(label, context, fn)
     return true, result
 end
 
---- Resolve the farmer record holding a farmland, tracing why when there is none.
+--- The Contractor's object once its farmers exist, tracing why when it is not ready.
 ---@param queryName string the public query asking, for the log
----@param farmlandId number farmland id
----@param farmId number|nil farm id, for the log only
----@return table|nil person The Contractor's live record, never handed out
----@return table|nil contractor The Contractor's object
-local function findHolder(queryName, farmlandId, farmId)
+---@param context string identifiers of the query, for the log
+---@return table|nil contractor The Contractor's object; nil when unavailable or not ready
+local function readyContractor(queryName, context)
     if not RmContractorBridge.available then
         Log:trace("  %s: adapter not available (%s)", queryName, tostring(RmContractorBridge.reason))
-        return nil, nil
+        return nil
     end
 
     local contractor = RmContractorBridge.getContractor()
     if contractor == nil then
         Log:trace("  %s: no Contractor object", queryName)
-        return nil, nil
+        return nil
     end
-
-    local context = string.format("farmlandId=%s farmId=%s", tostring(farmlandId), tostring(farmId))
 
     -- Contractor internal (may change): hasGenerated; if it disappears, detect turns the adapter off.
     local okGenerated, generated = callContractor("Farmers:hasGenerated", context, function()
@@ -95,10 +95,25 @@ local function findHolder(queryName, farmlandId, farmId)
     end)
     if not okGenerated then
         Log:trace("  %s: Farmers:hasGenerated raised", queryName)
-        return nil, nil
+        return nil
     end
     if generated ~= true then
         Log:trace("  %s: farmers not made yet", queryName)
+        return nil
+    end
+    return contractor
+end
+
+--- Resolve the farmer record holding a farmland, tracing why when there is none.
+---@param queryName string the public query asking, for the log
+---@param farmlandId number farmland id
+---@param farmId number|nil farm id, for the log only
+---@return table|nil person The Contractor's live record, never handed out
+---@return table|nil contractor The Contractor's object
+local function findHolder(queryName, farmlandId, farmId)
+    local context = string.format("farmlandId=%s farmId=%s", tostring(farmlandId), tostring(farmId))
+    local contractor = readyContractor(queryName, context)
+    if contractor == nil then
         return nil, nil
     end
 
@@ -153,6 +168,7 @@ end
 function RmContractorBridge.detect()
     Log:trace(">>> RmContractorBridge.detect()")
     RmContractorBridge.available = false
+    RmContractorBridge.yardReadsAvailable = false
     RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
     RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
 
@@ -191,6 +207,14 @@ function RmContractorBridge.detect()
             return type(value) == "number" and value > 0
         end)
 
+    -- Contractor internal (may change): getFarmers; if it disappears, FM answers "no yard" and keeps its other reads.
+    RmContractorBridge.yardReadsAvailable = type(contractor.Farmers.getFarmers) == "function"
+    if RmContractorBridge.yardReadsAvailable then
+        Log:trace("  detect: Farmers.getFarmers present - farmyard reads on")
+    else
+        Log:info("Contractor adapter: The Contractor has no Farmers.getFarmers - farmyards are treated as ordinary land")
+    end
+
     RmContractorBridge.available = true
     RmContractorBridge.reason = nil
     Log:info("Contractor adapter: The Contractor detected - farmer and relationship reads on")
@@ -201,6 +225,7 @@ end
 --- Return to the not-detected state, at mission teardown.
 function RmContractorBridge.reset()
     RmContractorBridge.available = false
+    RmContractorBridge.yardReadsAvailable = false
     RmContractorBridge.reason = RmContractorBridge.REASON_NOT_DETECTED
     RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
     RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
@@ -286,6 +311,48 @@ function RmContractorBridge.getRelationship(farmId, farmlandId)
         tostring(farmId), tostring(person.id), tostring(farmlandId), tostring(score), tostring(band))
     Log:trace("<<< RmContractorBridge.getRelationship = %s / %s", tostring(score), tostring(band))
     return relationship
+end
+
+--- The Contractor farmer whose farmyard a farmland is.
+---@param farmlandId number farmland id
+---@return table|nil farmer { id = number, name = string }, a copy; nil when none or unavailable
+function RmContractorBridge.getYardFarmer(farmlandId)
+    Log:trace(">>> RmContractorBridge.getYardFarmer(%s)", tostring(farmlandId))
+    if RmContractorBridge.available and not RmContractorBridge.yardReadsAvailable then
+        Log:trace("<<< RmContractorBridge.getYardFarmer = nil (no Farmers.getFarmers)")
+        return nil
+    end
+
+    local context = string.format("farmlandId=%s", tostring(farmlandId))
+    local contractor = readyContractor("getYardFarmer", context)
+    if contractor == nil then
+        Log:trace("<<< RmContractorBridge.getYardFarmer = nil (not ready)")
+        return nil
+    end
+
+    -- Contractor internal (may change): getFarmers and a farmer's yardFarmlandId; if either disappears, FM
+    -- answers "no yard". The walk sits inside the guard, so an unexpected shape turns the adapter off.
+    local okFarmers, yardFarmer = callContractor("Farmers:getFarmers", context, function()
+        for _, person in ipairs(contractor.Farmers:getFarmers()) do
+            if person.yardFarmlandId == farmlandId then
+                return { id = person.id, name = person.name }
+            end
+        end
+        return nil
+    end)
+    if not okFarmers then
+        Log:trace("<<< RmContractorBridge.getYardFarmer = nil (Farmers:getFarmers raised)")
+        return nil
+    end
+    if yardFarmer == nil then
+        Log:trace("<<< RmContractorBridge.getYardFarmer = nil (no farmer's yard)")
+        return nil
+    end
+
+    Log:debug("CONTRACTOR: farmland %s is the farmyard of farmer #%s %s",
+        tostring(farmlandId), tostring(yardFarmer.id), tostring(yardFarmer.name))
+    Log:trace("<<< RmContractorBridge.getYardFarmer = #%s", tostring(yardFarmer.id))
+    return yardFarmer
 end
 
 -- ============================================================================

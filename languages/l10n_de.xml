@@ -62,6 +62,7 @@
         <text name="rm_fm_neg_cooldown" text="Der Besitzer hat im Moment kein Interesse zu verhandeln. Versuche es später."/>
         <text name="rm_fm_neg_locked" text="Ein anderer Spieler verhandelt gerade dieses Feld."/>
         <text name="rm_fm_neg_invalidFarmland" text="Dieses Feld kann nicht verhandelt werden."/>
+        <text name="rm_fm_neg_farmerYard" text="This farmland is a farmer's yard and is not for sale."/>
         <text name="rm_fm_neg_error" text="Verhandlungsfehler: %s"/>
         <text name="rm_fm_neg_invalidAmount" text="Bitte gib einen gültigen Wert größer als Null ein."/>
         <text name="rm_fm_neg_listingTooHigh" text="Dein Angebotspreis darf %s nicht überschreiten (doppelter Marktwert)."/>

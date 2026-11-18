@@ -62,6 +62,7 @@
         <text name="rm_fm_neg_cooldown" text="Власник зараз не зацікавлений у переговорах. Спробуйте пізніше."/>
         <text name="rm_fm_neg_locked" text="Інший гравець зараз веде переговори щодо цього поля."/>
         <text name="rm_fm_neg_invalidFarmland" text="За це поле неможливо вести переговори."/>
+        <text name="rm_fm_neg_farmerYard" text="This farmland is a farmer's yard and is not for sale."/>
         <text name="rm_fm_neg_error" text="Помилка переговорів: %s"/>
         <text name="rm_fm_neg_invalidAmount" text="Будь ласка, введіть коректне число, більше нуля."/>
         <text name="rm_fm_neg_listingTooHigh" text="Ціна в оголошенні не може перевищувати %s (подвійну ринкову вартість)."/>

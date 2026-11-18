@@ -391,6 +391,8 @@ function RmNegotiationUI.getErrorMessage(errorReason)
         return g_i18n:getText("rm_fm_neg_insufficientFunds")
     elseif errorReason == "invalid_farmland" then
         return g_i18n:getText("rm_fm_neg_invalidFarmland")
+    elseif errorReason == "farmer_yard" then
+        return g_i18n:getText("rm_fm_neg_farmerYard")
     elseif errorReason == "listing_too_high" then
         return g_i18n:getText("rm_fm_neg_listingTooHigh2")
     elseif errorReason == "offer_not_higher" then
@@ -510,7 +512,7 @@ executeDeal = function(snapshot)
             return
         end
 
-        -- Set pendingDeals bypass for availability check (host only - server already set in completeSession)
+        -- Set pendingDeals bypass for the buy refusal check (host only - server already set in completeSession)
         if g_server ~= nil then
             RmNegotiationManager.pendingDeals[farmlandId] = true
         end

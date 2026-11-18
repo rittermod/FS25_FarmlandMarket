@@ -209,14 +209,34 @@ FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
 -- BUY FLOW VALIDATION HOOKS
 -- ============================================================================
 
---- Override FarmlandStateEvent:run() to reject purchases of unavailable farmlands.
---- Also bypasses availability check for negotiated deals (pendingDeals).
+--- Why the server refuses a buy request for a farmland, or nil when the request may go ahead.
+---@param farmlandId number Farmland ID
+---@return string|nil reason "farmer_yard" or "not_for_sale"; nil when not refused
+---@return table|nil farmer for "farmer_yard", the yard's farmer { id, name }
+function RmFarmlandMarket.getBuyRefusal(farmlandId)
+    Log:trace(">>> getBuyRefusal(%s)", tostring(farmlandId))
+    if RmFmAvailability.isFarmerYard(farmlandId) then
+        local farmer = RmContractorBridge.getYardFarmer(farmlandId)
+        Log:debug("BUY: refusal for farmland %s: farmer_yard", tostring(farmlandId))
+        Log:trace("<<< getBuyRefusal = farmer_yard")
+        return "farmer_yard", farmer
+    end
+    if RmFmSettings.isAvailabilityEnabled() and not RmFmAvailability.isForSale(farmlandId) then
+        Log:debug("BUY: refusal for farmland %s: not_for_sale", tostring(farmlandId))
+        Log:trace("<<< getBuyRefusal = not_for_sale")
+        return "not_for_sale", nil
+    end
+    Log:trace("<<< getBuyRefusal = nil")
+    return nil, nil
+end
+
+--- Refuse buys getBuyRefusal names, except a negotiated deal (pendingDeals), on the server's inbound run.
 FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, function(self, superFunc, connection)
     Log:trace(">>> FarmlandStateEvent:run(farmlandId=%d)", self.id)
 
-    -- Bypass: negotiated deal in progress - skip availability check.
+    -- Bypass: negotiated deal in progress - skip the buy refusal check.
     if RmNegotiationManager.pendingDeals[self.id] then
-        Log:info("NEGOTIATION: Executing negotiated deal for farmland %d (bypass availability)", self.id)
+        Log:info("NEGOTIATION: Executing negotiated deal for farmland %d (bypass buy refusal)", self.id)
         superFunc(self, connection)
         -- Clear the flag on the server's run of the client's request: a purchase can fail there
         -- without a transfer (for example, an active field mission blocks it), and
@@ -230,28 +250,43 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
         return
     end
 
-    -- Availability gate: only on the server's run of a client's request. The runs that apply
+    -- Buy gate: only on the server's run of a client's request. The runs that apply
     -- the purchase on each machine (buyer, other players, the listen server itself) must go
     -- through, or ownership and the map don't refresh live.
-    if not connection:getIsServer() and RmFmSettings.isAvailabilityEnabled() then
-        if not RmFmAvailability.isForSale(self.id) then
+    if not connection:getIsServer() then
+        local refusal, farmer = RmFarmlandMarket.getBuyRefusal(self.id)
+        if refusal == "farmer_yard" then
+            Log:warning("Purchase rejected: farmland %d is the farmyard of Contractor farmer #%s",
+                self.id, tostring(farmer ~= nil and farmer.id or nil))
+            Log:trace("<<< FarmlandStateEvent:run() [rejected: farmer_yard]")
+            return
+        elseif refusal ~= nil then
             Log:warning("Purchase rejected: farmland %d not available for sale", self.id)
-            Log:trace("<<< FarmlandStateEvent:run() [rejected]")
+            Log:trace("<<< FarmlandStateEvent:run() [rejected: %s]", tostring(refusal))
             return
         end
-        Log:debug("AVAIL: Buy check for farmland %d: available=true", self.id)
+        Log:debug("AVAIL: Buy check for farmland %d: allowed", self.id)
     end
 
     superFunc(self, connection)
     Log:trace("<<< FarmlandStateEvent:run() [allowed]")
 end)
 
---- Override InGameMenuMapFrame:setMapInputContext() to manage buy button for farmlands.
---- When availability is on and negotiation is off: suppress buy for unavailable.
---- When availability is on and negotiation is on: allow buy for eligible unavailable (unlisted negotiation).
+--- Hide the buy button on a farmyard, and on unlisted farmland unless unlisted offers are on.
 InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
     InGameMenuMapFrame.setMapInputContext,
     function(self, superFunc, canEnter, canReset, canSellVehicle, canVisit, canSetMarker, removeMarker, canBuy, canSell, canManage)
+        if canBuy then
+            local hotspot = self.currentHotspot
+            if hotspot ~= nil and hotspot.getFarmland ~= nil then
+                local farmland = hotspot:getFarmland()
+                if farmland ~= nil and RmFmAvailability.isFarmerYard(farmland.id) then
+                    canBuy = false
+                    Log:debug("AVAIL: Suppressed buy button for farmland %d (a farmer's farmyard)", farmland.id)
+                end
+            end
+        end
+
         if canBuy and RmFmSettings.isAvailabilityEnabled() then
             local hotspot = self.currentHotspot
             if hotspot ~= nil and hotspot.getFarmland ~= nil then
@@ -343,8 +378,12 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
         end
     end
 
-    -- "Not for sale" override (takes precedence over listing price)
-    if RmFmSettings.isAvailabilityEnabled()
+    -- "Not for sale" override (takes precedence over listing price); a farmer's farmyard shows it
+    -- whatever the availability setting
+    if RmFmAvailability.isFarmerYard(farmlandId) then
+        valueEl:setText(g_i18n:getText("rm_fm_notForSale"))
+        Log:trace("  context box: farmland %d not for sale (a farmer's farmyard)", farmlandId)
+    elseif RmFmSettings.isAvailabilityEnabled()
        and RmFmAvailability.isEligibleForAvailability(farmland)
        and not RmFmAvailability.isForSale(farmlandId) then
         valueEl:setText(g_i18n:getText("rm_fm_notForSale"))
@@ -1211,6 +1250,8 @@ local function onStartMission()
 
     RmFarmlandMarket.updateAllFarmlandPrices()
     RmFmAvailability.initialize()
+    -- A loaded save can carry a listed farmyard; The Contractor's saved farmers are loaded by now
+    RmFmAvailability.delistFarmerYards()
     RmNegotiationManager.ensureListedProfiles()
 
     -- Host post-load rehydrate of the local watchlist cache. The savegame

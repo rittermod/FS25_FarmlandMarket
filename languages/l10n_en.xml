@@ -62,6 +62,7 @@
         <text name="rm_fm_neg_cooldown" text="The owner is not interested in negotiating right now. Try again later."/>
         <text name="rm_fm_neg_locked" text="Another player is currently negotiating this field."/>
         <text name="rm_fm_neg_invalidFarmland" text="This field cannot be negotiated."/>
+        <text name="rm_fm_neg_farmerYard" text="This farmland is a farmer's yard and is not for sale."/>
         <text name="rm_fm_neg_error" text="Negotiation error: %s"/>
         <text name="rm_fm_neg_invalidAmount" text="Please enter a valid number greater than zero."/>
         <text name="rm_fm_neg_listingTooHigh" text="Your listing price cannot exceed %s (twice the market value)."/>

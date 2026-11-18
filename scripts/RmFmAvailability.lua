@@ -6,6 +6,7 @@
     - Availability state per farmland (isForSale, expiryDay, listingDay)
     - Initial randomization on new save
     - Daily evaluation (expire + new listings)
+    - A Contractor farmer's farmyard: never for sale, and delisted when listed
     - Savegame persistence
     - Network sync to clients
 
@@ -129,12 +130,39 @@ function RmFmAvailability.isEligibleForAvailability(farmland)
         and RmFmAvailability.hasPositiveMarketValue(farmland)
 end
 
+--- Whether a farmland is unowned and a Contractor farmer's farmyard; reads neither availability nor price.
+---@param farmlandId number Farmland ID
+---@return boolean isYard
+function RmFmAvailability.isFarmerYard(farmlandId)
+    local farmland = g_farmlandManager:getFarmlands()[farmlandId]
+    if farmland == nil then
+        Log:trace("  isFarmerYard(%s) = false (no farmland)", tostring(farmlandId))
+        return false
+    end
+    if farmland.farmId ~= FarmlandManager.NO_OWNER_FARM_ID then
+        Log:trace("  isFarmerYard(%s) = false (owned by farm %s)", tostring(farmlandId), tostring(farmland.farmId))
+        return false
+    end
+    if RmContractorBridge.getYardFarmer(farmlandId) == nil then
+        Log:trace("  isFarmerYard(%s) = false (no farmer's yard)", tostring(farmlandId))
+        return false
+    end
+    Log:debug("AVAIL: farmland %s is a farmer's farmyard", tostring(farmlandId))
+    return true
+end
+
 --- Check if a farmland is available for purchase
 --- This is the single source of truth for availability checks.
 ---@param farmlandId number Farmland ID
 ---@return boolean isForSale
 function RmFmAvailability.isForSale(farmlandId)
     Log:trace(">>> isForSale(farmlandId=%d)", farmlandId)
+
+    -- A farmer's farmyard is never for sale, whatever the availability setting or price
+    if RmFmAvailability.isFarmerYard(farmlandId) then
+        Log:trace("<<< isForSale = false (a farmer's farmyard)")
+        return false
+    end
 
     -- If availability is disabled, all fields are for sale
     if not RmFmSettings.isAvailabilityEnabled() then
@@ -273,7 +301,7 @@ function RmFmAvailability.initialize()
     Log:trace("<<< initialize()")
 end
 
---- Daily evaluation: expire/relist, add new listings, sync clients.
+--- Daily evaluation: expire/relist, add new listings, delist farmer farmyards; the caller syncs clients.
 --- Also auto-initializes if availability table is empty (handles off->preset switch mid-game).
 function RmFmAvailability.evaluateDaily()
     Log:trace(">>> evaluateDaily()")
@@ -360,7 +388,10 @@ function RmFmAvailability.evaluateDaily()
         end
     end
 
-    -- Step 3: Count current available
+    -- Step 3: Never leave a farmer's farmyard listed (before the caller's sync broadcast)
+    RmFmAvailability.delistFarmerYards()
+
+    -- Step 4: Count current available
     for _, entry in pairs(RmFmAvailability.availability) do
         if entry.isForSale then
             forSaleCount = forSaleCount + 1
@@ -381,6 +412,38 @@ function RmFmAvailability.evaluateDaily()
     -- payload missing prices for the parcels just listed in step 2.
 
     Log:trace("<<< evaluateDaily()")
+end
+
+--- Delist every listed row whose farmland is a Contractor farmer's farmyard, as an expiry would (server only).
+---@return number delisted count of rows delisted
+function RmFmAvailability.delistFarmerYards()
+    Log:trace(">>> delistFarmerYards()")
+
+    if g_server == nil then
+        Log:trace("<<< delistFarmerYards = 0 (not server)")
+        return 0
+    end
+    if not RmFmSettings.isAvailabilityEnabled() then
+        Log:trace("<<< delistFarmerYards = 0 (availability off)")
+        return 0
+    end
+
+    local delisted = 0
+    for farmlandId, entry in pairs(RmFmAvailability.availability) do
+        if entry.isForSale and RmFmAvailability.isFarmerYard(farmlandId) then
+            entry.isForSale = false
+            entry.expiryDay = 0
+            entry.listingDay = 0
+            delisted = delisted + 1
+            Log:debug("AVAIL: Farmland %d delisted (a farmer's farmyard)", farmlandId)
+        end
+    end
+
+    if delisted > 0 then
+        Log:info("Delisted %d farmer farmyard(s)", delisted)
+    end
+    Log:trace("<<< delistFarmerYards = %d", delisted)
+    return delisted
 end
 
 -- ============================================================================
