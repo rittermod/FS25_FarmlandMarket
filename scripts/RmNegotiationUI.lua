@@ -663,18 +663,40 @@ end
 local originalOnClickBuy = InGameMenuMapFrame.onClickBuy
 local originalOnClickSell = InGameMenuMapFrame.onClickSell
 
+--- Run the base buy unless the land's Contractor farmer refuses the farm; then say so and send nothing.
+---@param frame table the InGameMenuMapFrame instance
+---@param farmlandId number
+---@param farmId number|nil the player's farm, the one the base buy dialog sends
+---@return any result the base buy's return, or true when refused
+local function buyUnlessFarmerRefuses(frame, farmlandId, farmId)
+    Log:trace(">>> buyUnlessFarmerRefuses(%s, %s)", tostring(farmlandId), tostring(farmId))
+    local refusal, farmer = RmFarmlandMarket.getBuyRefusal(farmlandId, farmId)
+    if refusal == "farmer_refused" then
+        InfoDialog.show(string.format(g_i18n:getText("rm_fm_neg_refused"), getOwnerDisplayName(farmlandId)))
+        Log:debug("NEGOTIATION_UI: Instant buy of farmland %d refused by farmer #%s for farm %d",
+            farmlandId, tostring(farmer.id), farmId)
+        Log:trace("<<< buyUnlessFarmerRefuses = true [refused by farmer]")
+        return true
+    end
+    Log:trace("<<< buyUnlessFarmerRefuses = vanilla buy [not refused by a farmer (%s)]", tostring(refusal))
+    return originalOnClickBuy(frame)
+end
+
 --- Buy interceptor: replaces the contextActions callback on the live instance.
---- Called as callback(self) where self is the InGameMenuMapFrame instance.
+---@param self table the InGameMenuMapFrame instance the callback is called with
+---@return any result the base buy's return, or true when FM handled the click
 local function onClickBuyInterceptor(self)
     Log:trace(">>> onClickBuy interceptor")
 
     -- Get current hotspot farmland
     local hotspot = self.currentHotspot
     if hotspot == nil or hotspot.getFarmland == nil then
+        Log:trace("<<< onClickBuy interceptor [no farmland hotspot, vanilla]")
         return originalOnClickBuy(self)
     end
     local farmland = hotspot:getFarmland()
     if farmland == nil then
+        Log:trace("<<< onClickBuy interceptor [hotspot has no farmland, vanilla]")
         return originalOnClickBuy(self)
     end
 
@@ -683,6 +705,8 @@ local function onClickBuyInterceptor(self)
 
     -- Check if field is already owned by player
     if farmland.farmId == farmId then
+        Log:trace("<<< onClickBuy interceptor [farmland %d owner matches local farm %s, vanilla]", farmlandId,
+            tostring(farmId))
         return originalOnClickBuy(self)
     end
 
@@ -695,17 +719,18 @@ local function onClickBuyInterceptor(self)
     -- get the free vanilla buy instead of the negotiation engine's
     -- "invalid_market_value" error.
     if not isEligible then
-        return originalOnClickBuy(self)
+        Log:trace("  Farmland %d not eligible for negotiation, falling through to vanilla", farmlandId)
+        return buyUnlessFarmerRefuses(self, farmlandId, farmId)
     end
 
     -- Granular negotiation checks
     if isListed and not RmFmSettings.isNegotiateBuyEnabled() then
         Log:trace("  Listed field, negotiate buy disabled, falling through to vanilla")
-        return originalOnClickBuy(self)
+        return buyUnlessFarmerRefuses(self, farmlandId, farmId)
     end
     if not isListed and not RmFmSettings.isUnlistedOffersEnabled() then
         Log:trace("  Unlisted field, unlisted offers disabled, falling through to vanilla")
-        return originalOnClickBuy(self)
+        return buyUnlessFarmerRefuses(self, farmlandId, farmId)
     end
 
     -- Start negotiation
@@ -713,6 +738,11 @@ local function onClickBuyInterceptor(self)
     Log:trace("<<< onClickBuy interceptor [negotiation started]")
     return true
 end
+
+--- The buy interceptor. Module-level for testability.
+---@param frame table the InGameMenuMapFrame instance
+---@return any result the base buy's return, or true when FM handled the click
+RmNegotiationUI.onClickBuyInterceptor = onClickBuyInterceptor
 
 --- Sell interceptor: replaces the contextActions callback on the live instance.
 local function onClickSellInterceptor(self)

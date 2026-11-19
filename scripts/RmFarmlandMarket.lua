@@ -209,17 +209,41 @@ FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
 -- BUY FLOW VALIDATION HOOKS
 -- ============================================================================
 
---- Why the server refuses a buy request for a farmland, or nil when the request may go ahead.
+--- Why a farm may not buy a farmland, or nil when the buy may go ahead.
 ---@param farmlandId number Farmland ID
----@return string|nil reason "farmer_yard" or "not_for_sale"; nil when not refused
----@return table|nil farmer for "farmer_yard", the yard's farmer { id, name }
-function RmFarmlandMarket.getBuyRefusal(farmlandId)
-    Log:trace(">>> getBuyRefusal(%s)", tostring(farmlandId))
+---@param farmId number|nil the buying farm; a sell (0), a spectator or nil is never refused for the farmer
+---@return string|nil reason "farmer_yard", "farmer_refused" or "not_for_sale"; nil when not refused
+---@return table|nil farmer "farmer_yard": { id, name }; "farmer_refused": { id, score, refusesBelow }
+function RmFarmlandMarket.getBuyRefusal(farmlandId, farmId)
+    Log:trace(">>> getBuyRefusal(%s, %s)", tostring(farmlandId), tostring(farmId))
     if RmFmAvailability.isFarmerYard(farmlandId) then
         local farmer = RmContractorBridge.getYardFarmer(farmlandId)
         Log:debug("BUY: refusal for farmland %s: farmer_yard", tostring(farmlandId))
         Log:trace("<<< getBuyRefusal = farmer_yard")
         return "farmer_yard", farmer
+    end
+    -- Only a buy by a real farm of unowned land; the range also rejects the reserved guided-tour and invalid ids
+    local isBuy = g_farmlandManager:getFarmlandOwner(farmlandId) == FarmlandManager.NO_OWNER_FARM_ID
+        and type(farmId) == "number" and farmId >= 1 and farmId <= FarmManager.MAX_NUM_FARMS
+    if isBuy then
+        local relationship = RmContractorBridge.getRelationship(farmId, farmlandId)
+        if relationship ~= nil then
+            local refusesBelow = RmContractorBridge.getRefusesBelow()
+            if RmNegotiationEngine.isRefused(relationship.score, refusesBelow) then
+                Log:debug("BUY: refusal for farmland %s farm %s: farmer_refused (farmer #%s, score %s below %s)",
+                    tostring(farmlandId), tostring(farmId), tostring(relationship.farmerId),
+                    tostring(relationship.score), tostring(refusesBelow))
+                Log:trace("<<< getBuyRefusal = farmer_refused")
+                return "farmer_refused",
+                    { id = relationship.farmerId, score = relationship.score, refusesBelow = refusesBelow }
+            end
+            Log:trace("  getBuyRefusal: farmer #%s does not refuse (score %s)",
+                tostring(relationship.farmerId), tostring(relationship.score))
+        else
+            Log:trace("  getBuyRefusal: no farmer relationship")
+        end
+    else
+        Log:trace("  getBuyRefusal: not a buy by a real farm of unowned land, farmer check skipped")
     end
     if RmFmSettings.isAvailabilityEnabled() and not RmFmAvailability.isForSale(farmlandId) then
         Log:debug("BUY: refusal for farmland %s: not_for_sale", tostring(farmlandId))
@@ -230,7 +254,10 @@ function RmFarmlandMarket.getBuyRefusal(farmlandId)
     return nil, nil
 end
 
---- Refuse buys getBuyRefusal names, except a negotiated deal (pendingDeals), on the server's inbound run.
+--- On the server's inbound run, refuse what getBuyRefusal names for the requested farm, except a negotiated deal.
+---@param self table the FarmlandStateEvent; self.farmId is the requested owner (0 on a sell)
+---@param superFunc function the original run
+---@param connection table the connection the event arrived on
 FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, function(self, superFunc, connection)
     Log:trace(">>> FarmlandStateEvent:run(farmlandId=%d)", self.id)
 
@@ -254,11 +281,17 @@ FarmlandStateEvent.run = Utils.overwrittenFunction(FarmlandStateEvent.run, funct
     -- the purchase on each machine (buyer, other players, the listen server itself) must go
     -- through, or ownership and the map don't refresh live.
     if not connection:getIsServer() then
-        local refusal, farmer = RmFarmlandMarket.getBuyRefusal(self.id)
+        local refusal, farmer = RmFarmlandMarket.getBuyRefusal(self.id, self.farmId)
         if refusal == "farmer_yard" then
             Log:warning("Purchase rejected: farmland %d is the farmyard of Contractor farmer #%s",
                 self.id, tostring(farmer ~= nil and farmer.id or nil))
             Log:trace("<<< FarmlandStateEvent:run() [rejected: farmer_yard]")
+            return
+        elseif refusal == "farmer_refused" then
+            Log:warning("Purchase rejected: farmland %d - Contractor farmer #%s refuses farm %s"
+                .. " (score %s, refuses below %s)", self.id, tostring(farmer.id), tostring(self.farmId),
+                tostring(farmer.score), tostring(farmer.refusesBelow))
+            Log:trace("<<< FarmlandStateEvent:run() [rejected: farmer_refused]")
             return
         elseif refusal ~= nil then
             Log:warning("Purchase rejected: farmland %d not available for sale", self.id)
