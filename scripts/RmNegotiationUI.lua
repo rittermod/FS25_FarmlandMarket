@@ -106,21 +106,6 @@ local function closeNegotiationDialog()
     end
 end
 
---- Get the display name of the NPC owner of a farmland.
---- Returns the NPC title (e.g. "Walter") or the generic "Seller" l10n string as fallback.
----@param farmlandId number
----@return string
-local function getOwnerDisplayName(farmlandId)
-    local farmland = g_farmlandManager:getFarmlandById(farmlandId)
-    if farmland ~= nil then
-        local npc = farmland:getNPC()
-        if npc ~= nil and npc.title ~= nil then
-            return npc.title
-        end
-    end
-    return g_i18n:getText("rm_fm_neg_dlg_seller")
-end
-
 --- Send cancel request to server (fire-and-forget).
 --- On host, cancels directly. On client, sends event for server-side lock/session cleanup.
 --- `userInitiated` is true only for the explicit sell "Walk Away" affordance; it rides
@@ -137,6 +122,28 @@ local function sendCancelToServer(farmId, userInitiated)
             RmNegotiationRequestEvent.new("cancel", 0, 0, userInitiated, "")
         )
     end
+end
+
+-- =============================================================================
+-- PUBLIC API - SELLER NAME
+-- =============================================================================
+
+--- The name of the seller holding a farmland: its NPC's title, or the generic "Seller" text.
+---@param farmlandId number
+---@return string name
+function RmNegotiationUI.getSellerName(farmlandId)
+    local farmland = g_farmlandManager:getFarmlandById(farmlandId)
+    if farmland ~= nil then
+        local npc = farmland:getNPC()
+        if npc ~= nil and npc.title ~= nil then
+            Log:trace("getSellerName(%s): NPC title '%s'", tostring(farmlandId), tostring(npc.title))
+            return npc.title
+        end
+        Log:trace("getSellerName(%s): no NPC title, Seller fallback", tostring(farmlandId))
+    else
+        Log:trace("getSellerName(%s): unknown farmland, Seller fallback", tostring(farmlandId))
+    end
+    return g_i18n:getText("rm_fm_neg_dlg_seller")
 end
 
 -- =============================================================================
@@ -180,7 +187,7 @@ setActionStateFromSnapshot = function(dialog, snapshot)
     local round = snapshot.round
     -- Resolve NPC owner name for buy modes
     local ownerName = (mode ~= RmNegotiationEngine.MODE_SELL)
-        and getOwnerDisplayName(snapshot.farmlandId) or nil
+        and RmNegotiationUI.getSellerName(snapshot.farmlandId) or nil
 
     if state == "completed" then
         local msg = RmNegotiationUI.getCompletedMessage(snapshot, ownerName)
@@ -672,7 +679,7 @@ local function buyUnlessFarmerRefuses(frame, farmlandId, farmId)
     Log:trace(">>> buyUnlessFarmerRefuses(%s, %s)", tostring(farmlandId), tostring(farmId))
     local refusal, farmer = RmFarmlandMarket.getBuyRefusal(farmlandId, farmId)
     if refusal == "farmer_refused" then
-        InfoDialog.show(string.format(g_i18n:getText("rm_fm_neg_refused"), getOwnerDisplayName(farmlandId)))
+        InfoDialog.show(string.format(g_i18n:getText("rm_fm_neg_refused"), RmNegotiationUI.getSellerName(farmlandId)))
         Log:debug("NEGOTIATION_UI: Instant buy of farmland %d refused by farmer #%s for farm %d",
             farmlandId, tostring(farmer.id), farmId)
         Log:trace("<<< buyUnlessFarmerRefuses = true [refused by farmer]")

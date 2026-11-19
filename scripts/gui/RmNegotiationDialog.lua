@@ -52,6 +52,12 @@ function RmNegotiationDialog.new(target, customMt)
 
     -- GUI element refs (populated in onGuiSetupFinished)
     self.dialogTitleElement = nil
+    self.headerLayout = nil
+    self.headerNameElement = nil
+    self.headerChipElement = nil
+    self.headerChipFillElement = nil
+    self.headerChipTextElement = nil
+    self.headerSeparatorElement = nil
     self.headerInfoElement = nil
     self.statusTextElement = nil
     self.historyList = nil
@@ -76,6 +82,12 @@ function RmNegotiationDialog:onGuiSetupFinished()
 
     -- Store element references by ID
     self.dialogTitleElement = self:getDescendantById("dialogTitleElement")
+    self.headerLayout = self:getDescendantById("headerLayout")
+    self.headerNameElement = self:getDescendantById("headerNameElement")
+    self.headerChipElement = self:getDescendantById("headerChipElement")
+    self.headerChipFillElement = self:getDescendantById("headerChipFillElement")
+    self.headerChipTextElement = self:getDescendantById("headerChipTextElement")
+    self.headerSeparatorElement = self:getDescendantById("headerSeparatorElement")
     self.headerInfoElement = self:getDescendantById("headerInfoElement")
     self.statusTextElement = self:getDescendantById("statusTextElement")
     self.historyList = self:getDescendantById("historyList")
@@ -185,23 +197,7 @@ function RmNegotiationDialog:updateFromSnapshot(snapshot)
             string.format(g_i18n:getText("rm_fm_neg_dlg_titleBuy"), farmlandName))
     end
 
-    -- Set header based on mode
-    if farmland ~= nil then
-        if snapshot.mode == RmNegotiationEngine.MODE_SELL then
-            -- Sell: area + market value
-            self.headerInfoElement:setText(
-                string.format(g_i18n:getText("rm_fm_neg_dlg_headerAreaValue"),
-                    farmland.areaInHa,
-                    g_i18n:formatMoney(farmland.price, 0, true, true)))
-        else
-            -- Buy: area only
-            self.headerInfoElement:setText(
-                string.format(g_i18n:getText("rm_fm_neg_dlg_headerArea"), farmland.areaInHa))
-        end
-    else
-        -- Clear header when farmland data unavailable
-        self.headerInfoElement:setText("")
-    end
+    self:updateHeader(snapshot)
 
     -- Rebuild and refresh history
     self:rebuildHistory()
@@ -209,6 +205,58 @@ function RmNegotiationDialog:updateFromSnapshot(snapshot)
     self.historyList:scrollToEnd()
 
     Log:trace("<<< RmNegotiationDialog:updateFromSnapshot()")
+end
+
+--- Fills the header line: buy shows name, relationship chip, "|" and area; sell shows area and market value.
+---@param snapshot table Negotiation snapshot (farmlandId, mode)
+function RmNegotiationDialog:updateHeader(snapshot)
+    Log:trace(">>> RmNegotiationDialog:updateHeader(farmlandId=%s, mode=%s)", tostring(snapshot.farmlandId),
+        tostring(snapshot.mode))
+    local farmland = g_farmlandManager:getFarmlandById(snapshot.farmlandId)
+    local isBuy = snapshot.mode ~= RmNegotiationEngine.MODE_SELL
+    local name, chip = nil, nil
+
+    if farmland == nil then
+        Log:trace("  updateHeader: farmland unknown, header cleared")
+        self.headerInfoElement:setText("")
+    elseif not isBuy then
+        Log:trace("  updateHeader: sell, area and market value")
+        self.headerInfoElement:setText(string.format(g_i18n:getText("rm_fm_neg_dlg_headerAreaValue"),
+            farmland.areaInHa, g_i18n:formatMoney(farmland.price, 0, true, true)))
+    else
+        name = RmNegotiationUI.getSellerName(snapshot.farmlandId)
+        local farmId = RmNegotiationUI.currentFarmId or g_currentMission:getFarmId()
+        chip = RmContractorBridge.getRelationshipChip(farmId, snapshot.farmlandId)
+        Log:trace("  updateHeader: buy, farm %s, chip %s", tostring(farmId), chip ~= nil and "shown" or "hidden")
+        self.headerNameElement:setText(name)
+        if chip ~= nil then
+            self.headerChipTextElement:setText(chip.text)
+            self.headerChipFillElement.color = chip.color[RmFarmlandMarket.isColorBlindMode]
+        end
+        self.headerInfoElement:setText(string.format(g_i18n:getText("rm_fm_neg_dlg_headerArea"), farmland.areaInHa))
+    end
+
+    -- The dialog instance is reused, so every call sets each cell's visibility
+    local showName = farmland ~= nil and isBuy
+    self.headerNameElement:setVisible(showName)
+    self.headerSeparatorElement:setVisible(showName)
+    self.headerChipElement:setVisible(chip ~= nil)
+    -- A visibility flip does not reflow the layout
+    self.headerLayout:invalidateLayout()
+
+    Log:debug("HEADER: farmland %s, name '%s', %s", tostring(snapshot.farmlandId), tostring(name),
+        chip ~= nil and ("chip '" .. chip.text .. "'") or "no chip")
+    local cells = {}
+    for _, cell in ipairs({ self.headerNameElement, self.headerChipElement, self.headerSeparatorElement,
+        self.headerInfoElement }) do
+        if cell.visible then
+            table.insert(cells, string.format("%s x=%.1f y=%.1f w=%.1f h=%.1f", tostring(cell.id),
+                cell.absPosition[1] * 1920, cell.absPosition[2] * 1080, cell.absSize[1] * 1920,
+                cell.absSize[2] * 1080))
+        end
+    end
+    Log:debug("HEADER geometry: %s", table.concat(cells, "; "))
+    Log:trace("<<< RmNegotiationDialog:updateHeader()")
 end
 
 -- ============================================================================
@@ -229,24 +277,15 @@ function RmNegotiationDialog:rebuildHistory()
     local youLabel = g_i18n:getText("rm_fm_neg_dlg_you")
     local buyerLabel = g_i18n:getText("rm_fm_neg_dlg_buyer")
 
-    -- Resolve NPC owner name for buy modes
+    -- The header names the seller, so buy history rows read the generic "Seller"
     local sellerLabel = g_i18n:getText("rm_fm_neg_dlg_seller")
-    if snapshot.mode ~= RmNegotiationEngine.MODE_SELL then
-        local farmland = g_farmlandManager:getFarmlandById(snapshot.farmlandId)
-        if farmland ~= nil then
-            local npc = farmland:getNPC()
-            if npc ~= nil and npc.title ~= nil then
-                sellerLabel = npc.title
-            end
-        end
-    end
 
     -- Anchor row (always first)
     local anchorParty
     if snapshot.mode == RmNegotiationEngine.MODE_LISTED_BUY then
         anchorParty = g_i18n:getText("rm_fm_neg_dlg_listedAt")
     elseif snapshot.mode == RmNegotiationEngine.MODE_UNLISTED_BUY then
-        anchorParty = string.format(g_i18n:getText("rm_fm_neg_dlg_ownerDemands"), sellerLabel)
+        anchorParty = g_i18n:getText("rm_fm_neg_dlg_demands")
     else -- MODE_SELL
         anchorParty = g_i18n:getText("rm_fm_neg_dlg_youListedAt")
     end
@@ -422,8 +461,7 @@ function RmNegotiationDialog:setActionState(state, params)
 end
 
 --- Configures footer buttons visibility, text, and separator for the given state.
---- Follows the MultiOptionDialog pattern: separators are children of buttons,
---- hidden on the first visible button (bottomBarButton).
+--- Separators are children of buttons, hidden on the first visible button (bottomBarButton).
 ---@param state number
 function RmNegotiationDialog:configureFooterButtons(state)
     -- Bottom bar button separator is always hidden (it's the leftmost button)
@@ -557,7 +595,7 @@ function RmNegotiationDialog:relinkFocus(state)
         FocusManager:linkElements(focusTargets[i], FocusManager.RIGHT, focusTargets[i + 1])
         FocusManager:linkElements(focusTargets[i + 1], FocusManager.LEFT, focusTargets[i])
     end
-    -- Also link top/bottom for text input → footer navigation
+    -- Also link top/bottom for text input -> footer navigation
     for i = 1, #focusTargets - 1 do
         FocusManager:linkElements(focusTargets[i], FocusManager.BOTTOM, focusTargets[i + 1])
         FocusManager:linkElements(focusTargets[i + 1], FocusManager.TOP, focusTargets[i])
@@ -569,8 +607,7 @@ function RmNegotiationDialog:relinkFocus(state)
         FocusManager:setFocus(focusTargets[1])
         self:setSoundSuppressed(false)
 
-        -- Defer text input activation to next frame (matches TextInputDialog pattern).
-        -- Activating during a button click handler gets stomped by event processing.
+        -- Defer text input activation to the next frame: activating it inside a button click handler does not take.
         if state == RmNegotiationDialog.STATE_OFFER_INPUT and self.textInputElement ~= nil then
             local textInput = self.textInputElement
             Timer.createOneshot(0, function()
@@ -702,7 +739,7 @@ function RmNegotiationDialog.register()
     Log:trace(">>> RmNegotiationDialog.register()")
     local modDir = RmFarmlandMarket.modDirectory
     g_gui:loadProfiles(modDir .. "gui/guiProfiles.xml")
-    -- Create instance first (ASC pattern) - no 4th arg (isFrame is for TabbedMenu frames)
+    -- Create instance first (ASC pattern); a dialog passes no 4th argument
     local dialog = RmNegotiationDialog.new(g_i18n)
     g_gui:loadGui(modDir .. "gui/RmNegotiationDialog.xml", "RmNegotiationDialog", dialog)
     if dialog ~= nil then

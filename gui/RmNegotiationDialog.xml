@@ -11,8 +11,16 @@
             <!-- Title -->
             <Text profile="dialogTitle" text="" id="dialogTitleElement" position="0px -30px"/>
 
-            <!-- Header info (area, market value) -->
-            <Text profile="rmNegHeaderInfo" text="" id="headerInfoElement" position="50px -65px" size="620px 20px"/>
+            <!-- Header line: seller name, relationship chip | area (sell: area and market value only) -->
+            <BoxLayout profile="rmFmNegHeaderLine" id="headerLayout" position="50px -65px" size="620px 20px">
+                <Text profile="rmFmNegHeaderName" text="" id="headerNameElement"/>
+                <GuiElement profile="rmFmNegHeaderChipBox" id="headerChipElement">
+                    <RoundCorner profile="rmFmNegHeaderChip" id="headerChipFillElement"/>
+                    <Text profile="rmFmNegHeaderChipText" text="" id="headerChipTextElement"/>
+                </GuiElement>
+                <Text profile="rmFmNegHeaderSeparator" text="|" id="headerSeparatorElement"/>
+                <Text profile="rmNegHeaderInfo" text="" id="headerInfoElement"/>
+            </BoxLayout>
 
             <!-- History list -->
             <SmoothList profile="rmNegHistoryList" id="historyList" position="50px -95px" size="610px 240px"
@@ -43,7 +51,7 @@
 
         </GuiElement>
 
-        <!-- Footer bar: Walk Away + dynamic action buttons (MultiOptionDialog pattern) -->
+        <!-- Footer bar: Walk Away + dynamic action buttons -->
         <!-- Order: Esc(left) | secondary(middle) | Enter/primary(right) -->
         <BoxLayout profile="fs25_dialogButtonBox" id="footerButtonBox" size="700px 60px">
             <Button profile="buttonBack" text="$l10n_rm_fm_neg_walkAway" id="bottomBarButton" onClick="onClickBottomBar">

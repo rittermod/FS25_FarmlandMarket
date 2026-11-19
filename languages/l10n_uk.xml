@@ -92,7 +92,7 @@
         <text name="rm_fm_neg_dlg_seller" text="Продавець"/>
         <text name="rm_fm_neg_dlg_buyer" text="Покупець"/>
         <text name="rm_fm_neg_dlg_listedAt" text="Виставлено за"/>
-        <text name="rm_fm_neg_dlg_ownerDemands" text="%s вимагає"/>
+        <text name="rm_fm_neg_dlg_demands" text="Demands"/>
         <text name="rm_fm_neg_dlg_youListedAt" text="Ви виставили за"/>
         <text name="rm_fm_neg_dlg_waiting" text="Очікування відповіді..."/>
         <text name="rm_fm_neg_counterAsk" text="Зустрічна ціна"/>

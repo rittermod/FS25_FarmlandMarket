@@ -92,7 +92,7 @@
         <text name="rm_fm_neg_dlg_seller" text="Seller"/>
         <text name="rm_fm_neg_dlg_buyer" text="Buyer"/>
         <text name="rm_fm_neg_dlg_listedAt" text="Listed at"/>
-        <text name="rm_fm_neg_dlg_ownerDemands" text="%s demands"/>
+        <text name="rm_fm_neg_dlg_demands" text="Demands"/>
         <text name="rm_fm_neg_dlg_youListedAt" text="You listed at"/>
         <text name="rm_fm_neg_dlg_waiting" text="Waiting for response..."/>
         <text name="rm_fm_neg_counterAsk" text="Counter-ask"/>

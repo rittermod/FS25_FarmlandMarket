@@ -44,10 +44,65 @@
         <textVerticalAlignment value="middle"/>
     </Profile>
 
-    <!-- Header info text  - dimmed secondary info, 15px, centered -->
+    <!-- Header line: a centered row whose cells the layout places; 10px between cells -->
+    <Profile name="rmFmNegHeaderLine" extends="emptyPanel" with="anchorTopLeft">
+        <size value="620px 20px"/>
+        <flowDirection value="horizontal"/>
+        <alignmentX value="center"/>
+        <alignmentY value="middle"/>
+        <elementSpacing value="10px"/>
+        <autoValidateLayout value="true"/>
+    </Profile>
+
+    <!-- Header seller name  - light text, one line, width follows the name up to a cap, then "..." -->
+    <Profile name="rmFmNegHeaderName" extends="fs25_textDefault" with="anchorTopLeft">
+        <size value="400px 20px"/>
+        <textAutoWidth value="true"/>
+        <textMaxWidth value="400px"/>
+        <textMaxNumLines value="1"/>
+        <textLayoutMode value="truncate"/>
+    </Profile>
+
+    <!-- Header separator before the area, after the name or the chip - dim, like the sell header's "|" -->
+    <Profile name="rmFmNegHeaderSeparator" extends="fs25_textDefault" with="anchorTopLeft">
+        <size value="10px 20px"/>
+        <textColor value="$preset_colorWhite_50"/>
+        <textAutoWidth value="true"/>
+    </Profile>
+
+    <!-- Header relationship chip: a fixed 80px cell holding the fill and its label -->
+    <Profile name="rmFmNegHeaderChipBox" extends="emptyPanel" with="anchorTopLeft">
+        <size value="80px 16px"/>
+    </Profile>
+
+    <!-- Chip fill; no default color, code sets the band's fill before the chip shows -->
+    <Profile name="rmFmNegHeaderChip" extends="baseReference" with="anchorTopLeft">
+        <size value="80px 16px"/>
+        <cornerSize value="0.3"/>
+    </Profile>
+
+    <!-- Chip label: 10px bold upper-case white, shrinks to fit the chip -->
+    <Profile name="rmFmNegHeaderChipText" extends="baseReference" with="anchorTopLeft">
+        <size value="80px 16px"/>
+        <textSize value="10px"/>
+        <textBold value="true"/>
+        <textUpperCase value="true"/>
+        <textLayoutMode value="resize"/>
+        <textColor value="1 1 1 1"/>
+        <textSelectedColor value="1 1 1 1"/>
+        <textFocusedColor value="1 1 1 1"/>
+        <textHighlightedColor value="1 1 1 1"/>
+        <textDisabledColor value="1 1 1 1"/>
+        <textAlignment value="center"/>
+        <textVerticalAlignment value="middle"/>
+    </Profile>
+
+    <!-- Header area text  - dimmed secondary info, 15px, width follows its text -->
     <Profile name="rmNegHeaderInfo" extends="fs25_textDefault" with="anchorTopLeft">
+        <size value="250px 20px"/>
         <textColor value="$preset_colorWhite_50"/>
         <textAlignment value="center"/>
+        <textAutoWidth value="true"/>
     </Profile>
 
     <!-- Secondary button (MENU_EXTRA_1 input action)  - not a global FS25 profile -->
