@@ -90,7 +90,7 @@
         <text name="rm_fm_neg_dlg_seller" text="Venditore"/>
         <text name="rm_fm_neg_dlg_buyer" text="Acquirente"/>
         <text name="rm_fm_neg_dlg_listedAt" text="In vendita a"/>
-        <text name="rm_fm_neg_dlg_demands" text="Demands"/>
+        <text name="rm_fm_neg_dlg_demands" text="Richiede"/>
         <text name="rm_fm_neg_dlg_youListedAt" text="Hai messo in vendita a"/>
         <text name="rm_fm_neg_dlg_waiting" text="In attesa di risposta..."/>
         <text name="rm_fm_neg_counterAsk" text="Contro-richiesta"/>
