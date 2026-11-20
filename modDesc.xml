@@ -26,6 +26,12 @@ Notes:
 Documentation: https://github.com/rittermod/FS25_FarmlandMarket
 
 Changelog:
+1.1.0.0-dev.1:
+- Added the seller's name to the negotiation dialog and, with The Contractor, your farm's relationship with that farmer
+- Made buy negotiations on land The Contractor's farmers hold harder or easier by your relationship with them; once you have fallen out, they refuse to sell at all
+- Stopped listing The Contractor farmers' farmyards for sale and refused new offers and buys on them
+- Fixed being able to re-roll the NPC buyer's opening bid by walking away from a sell negotiation and reloading the save
+
 1.0.1.0:
 - Added German (de) translation - contributed by Phips98
 - Added Ukrainian (uk) translation - contributed by daniilua
@@ -36,39 +42,6 @@ Changelog:
 - Fixed being able to re-roll the NPC buyer's opening bid by repeatedly walking away from a sell negotiation (added a short re-list cooldown)
 - Fixed a field staying buyable while not for sale after a negotiated purchase failed to complete on the server (for example, blocked by an active field mission); the availability bypass is now cleared as soon as the deal is processed
 - Added Italian (it) translation - contributed by FirenzeIT
-
-0.6.1.0 (Beta - 2026-05-15):
-- Added Watchlist notification when a watched farmland's negotiation cooldown ends
-
-0.6.0.0 (Beta - 2026-05-09):
-
-Added:
-- Added Watchlist - track farmlands you are interested in via the map's Farmlands subcategory and the farmland action menu, with a notification when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
-- Added three independent negotiation toggles: Negotiate purchases, Negotiate sales, and Unlisted offers (replaces single on/off toggle)
-- Added save migration from old single negotiation toggle - existing saves automatically map to all three settings
-- Added color blind mode support - farmland overlays and legend switch to blue/orange when enabled in game settings
-
-Changed:
-- Improved negotiation fairness - players must increase buy offers and decrease sell asks each round
-- Improved cooldown message in sell mode - no longer says "the owner is not interested" when the player is the owner
-
-Fixed:
-- Fixed seller counter-offer going below their minimum acceptable price during negotiation
-- Fixed NPC buyer offer exceeding their maximum willingness to pay during negotiation
-- Fixed seller's first counter sometimes equaling their opening demand with high stubbornness
-- Fixed buyer's opening offer not visible when entering counter-ask in sell dialog
-- Fixed negotiation dialog closing when submitting a non-monotonic offer/ask
-- Fixed negotiation defaulting to Off on fresh saves instead of On
-- Fixed listing prices and market values not updating when price per hectare is changed in settings
-- Fixed sell cooldown blocking owner from re-listing after NPC buyer walks away
-- Fixed "Negotiate Sale" button appearing on placeables and buildings instead of only on farmland
-- Fixed buying or offering on a $0 farmland (map-border / outside-of-map plots) showing a "Negotiation error" - now falls through to the vanilla free purchase
-- Fixed missing listing price on clients for newly-listed watched parcels in multiplayer
-
-0.5.0.0 (Beta - 2026-03-21):
-- Changed base price setting from multiplier presets to direct price per hectare input
-- Fixed list price not showing correctly when Precision Farming mod is active
-- Fixed logger registration error when multiple Ritter mods are loaded
 
         ]]>        </en>
         <de><![CDATA[

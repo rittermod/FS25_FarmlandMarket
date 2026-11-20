@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0.0-dev.1:
+- Added the seller's name to the negotiation dialog and, with The Contractor, your farm's relationship with that farmer
+- Made buy negotiations on land The Contractor's farmers hold harder or easier by your relationship with them; once you have fallen out, they refuse to sell at all
+- Stopped listing The Contractor farmers' farmyards for sale and refused new offers and buys on them
+- Fixed being able to re-roll the NPC buyer's opening bid by walking away from a sell negotiation and reloading the save
+
 ## 1.0.1.0:
 - Added German (de) translation - contributed by Phips98
 - Added Ukrainian (uk) translation - contributed by daniilua
@@ -11,10 +17,10 @@
 - Fixed a field staying buyable while not for sale after a negotiated purchase failed to complete on the server (for example, blocked by an active field mission); the availability bypass is now cleared as soon as the deal is processed
 - Added Italian (it) translation - contributed by FirenzeIT
 
-## 0.6.1.0 (Beta - 2026-05-15):
+## 0.6.1.0 (Beta):
 - Added Watchlist notification when a watched farmland's negotiation cooldown ends
 
-## 0.6.0.0 (Beta - 2026-05-09):
+## 0.6.0.0 (Beta):
 
 ### Added
 - Added Watchlist - track farmlands you are interested in via the map's Farmlands subcategory and the farmland action menu, with a notification when a watched farmland goes up for sale; persists across save/load and isolates per-farm in multiplayer
@@ -39,7 +45,7 @@
 - Fixed buying or offering on a $0 farmland (map-border / outside-of-map plots) showing a "Negotiation error" - now falls through to the vanilla free purchase
 - Fixed missing listing price on clients for newly-listed watched parcels in multiplayer
 
-## 0.5.0.0 (Beta - 2026-03-21):
+## 0.5.0.0 (Beta):
 - Changed base price setting from multiplier presets to direct price per hectare input
 - Fixed list price not showing correctly when Precision Farming mod is active
 - Fixed logger registration error when multiple Ritter mods are loaded
@@ -53,13 +59,13 @@
 - Fixed keyboard navigation not reaching Farmland Market settings in Game Settings
 - Fixed negotiation toggle (BinaryOption) visual glitch where slider was misaligned
 
-## 0.4.0.0 (Beta)
+## 0.4.0.0 (Beta):
 - Added dedicated negotiation dialog with offer history, field details, and action buttons
 - Added seller names in negotiation messages for clearer context
 - Improved cooldown messages to show remaining time in months
 - Changed from Alpha to Beta
 
-## 0.3.0.0 (Alpha)
+## 0.3.0.0 (Alpha):
 - Added negotiation system - buy and sell farmland through multi-round offers and counter-offers
 - Added "Make offer" and "Negotiate sale" buttons replacing instant buy/sell
 - Added negotiation cooldown per field to prevent repeated attempts
@@ -68,7 +74,7 @@
 - Added multiplayer locking to prevent simultaneous negotiations on the same field
 - Fixed farmland price leaking through "Not for sale" when Precision Farming is active
 
-## 0.2.0.0 (Alpha)
+## 0.2.0.0 (Alpha):
 - Added field availability system - not all fields are for sale at all times
 - Added five difficulty presets: Easy, Normal, Hard, Harder, Realistic (or off)
 - Added seasonal market variation - more fields listed Nov-Mar
@@ -79,7 +85,7 @@
 - Added multiplayer sync for all settings and availability state
 - Changed the price multiplier tooltip to show the map's base price per hectare
 
-## 0.1.0.0 (Alpha)
+## 0.1.0.0 (Alpha):
 - Added the initial Farmland Market release
 - Added estimated crop value to farmland prices
 - Added a configurable base price per hectare
