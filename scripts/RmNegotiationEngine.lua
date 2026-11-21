@@ -297,9 +297,11 @@ end
 
 ---@param listingPrice number Player's listing price (must be > 0)
 ---@param marketValue number Current market price (must be > 0)
+---@param relationship table|nil { factor = number, temperament = number|nil }; nil draws today's unshaped buyer
 ---@return table|nil buyerProfile Flat NPC buyer profile table, or nil on invalid input
-function RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
-    Log:trace(">>> generateNpcBuyer(listingPrice=%s, marketValue=%s)", tostring(listingPrice), tostring(marketValue))
+function RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue, relationship)
+    Log:trace(">>> generateNpcBuyer(listingPrice=%s, marketValue=%s, relationship=%s)", tostring(listingPrice),
+        tostring(marketValue), tostring(relationship ~= nil))
 
     if type(listingPrice) ~= "number" or listingPrice <= 0 then
         Log:warning("Invalid listingPrice: %s", tostring(listingPrice))
@@ -326,6 +328,7 @@ function RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
         marketValue = marketValue,
         anchorPrice = listingPrice,
         listingPrice = listingPrice,
+        npcMarketCap = npcMarketCap,
         npcOpening = npcOpening,
         npcReservation = npcReservation,
         npcStubbornness = npcStubbornness,
@@ -334,6 +337,19 @@ function RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
 
     Log:debug("NEGOTIATION: Generated NPC buyer: opening=%.0f reservation=%.0f stubbornness=%.2f",
         npcOpening, npcReservation, npcStubbornness)
+
+    if relationship ~= nil then
+        local shaped = RmNegotiationEngine.shapeBuyer(profile, relationship.factor, relationship.temperament)
+        Log:debug("NEGOTIATION: Shaped NPC buyer (factor %s): opening %.0f -> %.0f, reservation %.0f -> %.0f, "
+            .. "stubbornness %.2f -> %.2f, walk-away %.3f -> %.3f",
+            tostring(relationship.factor), profile.npcOpening, shaped.npcOpening, profile.npcReservation,
+            shaped.npcReservation, profile.npcStubbornness, shaped.npcStubbornness, profile.walkawayThreshold,
+            shaped.walkawayThreshold)
+        profile = shaped
+    else
+        Log:trace("  generateNpcBuyer: no relationship, profile unshaped")
+    end
+
     Log:trace("<<< generateNpcBuyer")
     return profile
 end
@@ -389,19 +405,22 @@ function RmNegotiationEngine.farmerTemperament(farmerId, salt)
     return unit
 end
 
---- Map a temperament unit onto a seller mode's stubbornness range (base - range .. base + range).
----@param mode string MODE_LISTED_BUY or MODE_UNLISTED_BUY
+--- Map a temperament unit onto a mode's stubbornness range (base - range .. base + range); a sell uses the buyer's.
+---@param mode string MODE_LISTED_BUY, MODE_UNLISTED_BUY or MODE_SELL
 ---@param unit number temperament in [0, 1)
 ---@return number stubbornness
 function RmNegotiationEngine.temperamentStubbornness(mode, unit)
-    local params = RmNegotiationEngine.LISTED_BUY
+    local stubbornnessRange = RmNegotiationEngine.LISTED_BUY.stubbornness
     if mode == RmNegotiationEngine.MODE_UNLISTED_BUY then
-        params = RmNegotiationEngine.UNLISTED_BUY
+        stubbornnessRange = RmNegotiationEngine.UNLISTED_BUY.stubbornness
         Log:trace("  temperamentStubbornness: unlisted range")
+    elseif mode == RmNegotiationEngine.MODE_SELL then
+        stubbornnessRange = RmNegotiationEngine.SELL.npcStubbornness
+        Log:trace("  temperamentStubbornness: sell range")
     else
         Log:trace("  temperamentStubbornness: listed range")
     end
-    local base, range = params.stubbornness.base, params.stubbornness.range
+    local base, range = stubbornnessRange.base, stubbornnessRange.range
     local stubbornness = base - range + 2 * range * unit
     Log:trace("<<< temperamentStubbornness(mode=%s, unit=%s) = %s", tostring(mode), tostring(unit),
         tostring(stubbornness))
@@ -469,6 +488,40 @@ function RmNegotiationEngine.shapeSeller(profile, factor, unit)
 
     Log:trace("<<< shapeSeller: reservation=%s rejectFloor=%s stubbornness=%s", tostring(shaped.reservation),
         tostring(shaped.rejectFloor), tostring(shaped.stubbornness))
+    return shaped
+end
+
+--- A new NPC buyer profile shifted by the relationship; the input is untouched and the listing price never moves.
+---@param profile table buyer profile from generateNpcBuyer
+---@param factor number relationship factor in [-1, 1]
+---@param unit number|nil the farmer's temperament; nil keeps the profile's own stubbornness
+---@return table shaped
+function RmNegotiationEngine.shapeBuyer(profile, factor, unit)
+    Log:trace(">>> shapeBuyer(factor=%s, unit=%s)", tostring(factor), tostring(unit))
+    local swing = RmNegotiationEngine.RELATIONSHIP_SWING
+    local shaped = {}
+    for key, value in pairs(profile) do
+        shaped[key] = value
+    end
+
+    -- Both gaps to the buyer's ceiling scale by one positive factor, so opening <= reservation <= ceiling holds
+    local ceiling = math.min(profile.listingPrice, profile.npcMarketCap)
+    local gapScale = 1 - swing * factor
+    shaped.npcOpening = ceiling - (ceiling - profile.npcOpening) * gapScale
+    shaped.npcReservation = ceiling - (ceiling - profile.npcReservation) * gapScale
+    shaped.walkawayThreshold = 1 + (profile.walkawayThreshold - 1) * (1 + swing * factor)
+
+    local stubbornness = profile.npcStubbornness
+    if unit ~= nil then
+        stubbornness = RmNegotiationEngine.temperamentStubbornness(RmNegotiationEngine.MODE_SELL, unit)
+        Log:trace("  shapeBuyer: stubbornness from temperament %s", tostring(stubbornness))
+    else
+        Log:trace("  shapeBuyer: no temperament, profile stubbornness kept")
+    end
+    shaped.npcStubbornness = clamp(RmNegotiationEngine.shapeDismissChance(stubbornness, factor), 0.1, 0.95)
+
+    Log:trace("<<< shapeBuyer: opening=%s reservation=%s stubbornness=%s walkaway=%s", tostring(shaped.npcOpening),
+        tostring(shaped.npcReservation), tostring(shaped.npcStubbornness), tostring(shaped.walkawayThreshold))
     return shaped
 end
 

@@ -364,6 +364,12 @@ function RmNegotiationUI.getCompletedMessage(snapshot, ownerName)
     elseif outcome == RmNegotiationEngine.OUTCOME_DISMISSED then
         return string.format(g_i18n:getText("rm_fm_neg_dismissed"), name)
     elseif outcome == RmNegotiationEngine.OUTCOME_REFUSED then
+        if snapshot.mode == RmNegotiationEngine.MODE_SELL then
+            local buyerName = snapshot.buyerName or g_i18n:getText("rm_fm_neg_dlg_buyer")
+            Log:debug("NEGOTIATION: Refused sell message for farmland %s: %s", tostring(snapshot.farmlandId),
+                tostring(buyerName))
+            return string.format(g_i18n:getText("rm_fm_neg_refusedSell"), buyerName)
+        end
         Log:debug("NEGOTIATION: Refused message for %s", tostring(name))
         return string.format(g_i18n:getText("rm_fm_neg_refused"), name)
     elseif outcome == RmNegotiationEngine.OUTCOME_NPC_WALKED then

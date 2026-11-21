@@ -10,9 +10,9 @@
 
     Settings:
     - Availability preset (MultiTextOption): off, easy, normal, hard, harder, realistic
-    - Negotiate purchases (BinaryOption): on/off — negotiate listed field buys
-    - Negotiate sales (BinaryOption): on/off — negotiate field sales
-    - Unlisted offers (BinaryOption): on/off — make offers on unlisted fields
+    - Negotiate purchases (BinaryOption): on/off - negotiate listed field buys
+    - Negotiate sales (BinaryOption): on/off - negotiate field sales
+    - Unlisted offers (BinaryOption): on/off - make offers on unlisted fields
     - Base price per hectare (Button + TextInputDialog): custom absolute price, 0 = map default
 
     Author: Ritter
@@ -613,7 +613,7 @@ function RmFmSettings.loadFromXMLFile(xmlFile)
     RmFmSettings.availabilityPresetState = xmlFile:getValue(key .. "#availabilityPreset", 3)
     local rawPrice = xmlFile:getValue(key .. "#customPricePerHa", 0)
     RmFmSettings.setCustomPricePerHa(rawPrice)
-    -- Migration: old single toggle → three granular toggles
+    -- Migration: old single toggle -> three granular toggles
     local oldNeg = xmlFile:getValue(key .. "#negotiationEnabled")
     if oldNeg ~= nil then
         -- Old save: map single value to all three toggles

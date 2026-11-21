@@ -2,11 +2,13 @@
     RmContractorBridge.lua
     Read-only adapter for The Contractor (FS25_TheContractor).
 
-    Answers four questions for FarmlandMarket: which Contractor farmer holds a
-    farmland, how a farm stands with that farmer, whose farmyard a farmland is,
-    and which farmer would take a farmland that loses its owner. It reaches The
-    Contractor through g_currentMission.TheContractor and changes none of its state.
-    Contractor public API (stable): Farmers:getHolder, Relationships:getScore.
+    Answers five questions for FarmlandMarket: which Contractor farmer holds a
+    farmland, how a farm stands with that farmer, how a farm stands with a given
+    farmer, whose farmyard a farmland is, and which farmer would take a farmland
+    that loses its owner. It reaches The Contractor through
+    g_currentMission.TheContractor and changes none of its state.
+    Contractor public API (stable): Farmers:getHolder, Relationships:getScore (for
+    the holder and for a given farmer).
     Contractor internal (may change): Farmers:getFarmers, a farmer's yardFarmlandId,
     Farmers:hasGenerated, Farmers.getLand, Farmers.getFreeYards, Farmers.chooseHolder,
     Farmers.chooseYardHolder, Yards:getYards, Relationships.getBand,
@@ -363,6 +365,33 @@ function RmContractorBridge.getRelationship(farmId, farmlandId)
         tostring(farmId), tostring(person.id), tostring(farmlandId), tostring(score), tostring(band))
     Log:trace("<<< RmContractorBridge.getRelationship = %s / %s", tostring(score), tostring(band))
     return relationship
+end
+
+--- A farm's relationship score with a given farmer, such as a sell's predicted buyer.
+---@param farmId number the player's farm id
+---@param farmerId number the farmer's id
+---@return number|nil score The Contractor's score; nil when unavailable, not ready, or the read raised
+function RmContractorBridge.getFarmerScore(farmId, farmerId)
+    Log:trace(">>> RmContractorBridge.getFarmerScore(%s, %s)", tostring(farmId), tostring(farmerId))
+    local context = string.format("farmId=%s farmerId=%s", tostring(farmId), tostring(farmerId))
+    local contractor = readyContractor("getFarmerScore", context)
+    if contractor == nil then
+        Log:trace("<<< RmContractorBridge.getFarmerScore = nil (not ready)")
+        return nil
+    end
+
+    -- Contractor public API (stable): getScore; if it disappears, detect turns the adapter off.
+    local okScore, score = callContractor("Relationships:getScore", context, function()
+        return contractor.Relationships:getScore(farmId, farmerId)
+    end)
+    if not okScore then
+        Log:trace("<<< RmContractorBridge.getFarmerScore = nil (Relationships:getScore raised)")
+        return nil
+    end
+
+    Log:debug("CONTRACTOR: farm %s and farmer #%s: score %s", tostring(farmId), tostring(farmerId), tostring(score))
+    Log:trace("<<< RmContractorBridge.getFarmerScore = %s", tostring(score))
+    return score
 end
 
 --- A farm's relationship chip with the farmer holding a farmland: The Contractor's text and its tone's fill.

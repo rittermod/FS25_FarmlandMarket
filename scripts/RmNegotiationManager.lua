@@ -242,6 +242,22 @@ local function completeSession(farmId, outcome, price)
     return snapshot
 end
 
+--- A farm's relationship record with a farmer, from its score: the shared factor and the refusal verdict.
+---@param farmerId number
+---@param score number
+---@return table relationship { farmerId, score, factor, refused, refusesBelow }
+local function relationshipFromScore(farmerId, score)
+    local refusesBelow = RmContractorBridge.getRefusesBelow()
+    local maxScore = RmContractorBridge.getMaxScore()
+    return {
+        farmerId = farmerId,
+        score = score,
+        factor = RmNegotiationEngine.relationshipFactor(score, maxScore, refusesBelow),
+        refused = RmNegotiationEngine.isRefused(score, refusesBelow),
+        refusesBelow = refusesBelow,
+    }
+end
+
 --- The negotiating farm's standing with the Contractor farmer holding a farmland.
 ---@param farmlandId number
 ---@param farmId number
@@ -253,29 +269,43 @@ local function readRelationship(farmlandId, farmId)
             tostring(farmlandId), tostring(farmId))
         return nil
     end
-    local refusesBelow = RmContractorBridge.getRefusesBelow()
-    local maxScore = RmContractorBridge.getMaxScore()
-    local score = contractorRelationship.score
-    local relationship = {
-        farmerId = contractorRelationship.farmerId,
-        score = score,
-        factor = RmNegotiationEngine.relationshipFactor(score, maxScore, refusesBelow),
-        refused = RmNegotiationEngine.isRefused(score, refusesBelow),
-        refusesBelow = refusesBelow,
-    }
+    local relationship = relationshipFromScore(contractorRelationship.farmerId, contractorRelationship.score)
     Log:debug("NEGOTIATION: Relationship farmland %s farm %s farmer #%s: score %s, factor %s, refused %s",
-        tostring(farmlandId), tostring(farmId), tostring(relationship.farmerId), tostring(score),
+        tostring(farmlandId), tostring(farmId), tostring(relationship.farmerId), tostring(relationship.score),
         tostring(relationship.factor), tostring(relationship.refused))
+    return relationship
+end
+
+--- The selling farm's standing with the Contractor farmer predicted to buy its farmland.
+---@param farmlandId number
+---@param farmId number
+---@param buyer table|nil { id, name } from RmContractorBridge.predictSellBuyer
+---@return table|nil relationship { farmerId, score, factor, refused, refusesBelow }; nil without a buyer or a score
+local function readBuyerRelationship(farmlandId, farmId, buyer)
+    if buyer == nil then
+        Log:trace("  readBuyerRelationship: no predicted buyer for farmland %s", tostring(farmlandId))
+        return nil
+    end
+    local score = RmContractorBridge.getFarmerScore(farmId, buyer.id)
+    if score == nil then
+        Log:trace("  readBuyerRelationship: no score for farm %s and farmer #%s", tostring(farmId), tostring(buyer.id))
+        return nil
+    end
+    local relationship = relationshipFromScore(buyer.id, score)
+    Log:debug("NEGOTIATION: Buyer relationship farmland %s farm %s farmer #%s: score %s, factor %s, refused %s",
+        tostring(farmlandId), tostring(farmId), tostring(buyer.id), tostring(score), tostring(relationship.factor),
+        tostring(relationship.refused))
     return relationship
 end
 
 --- Completed snapshot for a farmer who refuses to deal; touches no session, lock or cooldown.
 ---@param farmlandId number
 ---@param farmId number
----@param mode string MODE_LISTED_BUY or MODE_UNLISTED_BUY
----@param relationship table from readRelationship
+---@param mode string MODE_LISTED_BUY, MODE_UNLISTED_BUY or MODE_SELL
+---@param relationship table from readRelationship or readBuyerRelationship
+---@param buyerName string|nil the refusing buyer's name on a sell; nil on a buy
 ---@return table snapshot
-local function refusedSnapshot(farmlandId, farmId, mode, relationship)
+local function refusedSnapshot(farmlandId, farmId, mode, relationship, buyerName)
     Log:info("NEGOTIATION: Farmer #%s refused farm %s on farmland %s (score %s below %s)",
         tostring(relationship.farmerId), tostring(farmId), tostring(farmlandId), tostring(relationship.score),
         tostring(relationship.refusesBelow))
@@ -293,6 +323,7 @@ local function refusedSnapshot(farmlandId, farmId, mode, relationship)
         finalPrice = nil,
         anchorPrice = nil,
         rejectFloor = nil,
+        buyerName = buyerName,
     }
 end
 
@@ -541,6 +572,14 @@ local function doStartSell(farmlandId, farmId, listingPrice)
     local farmland = g_farmlandManager:getFarmlandById(farmlandId)
     if farmland == nil then return nil, "invalid_farmland" end
     if farmland.farmId ~= farmId then return nil, "not_owned" end
+    -- The Contractor farmer predicted to take the land once sold; nil keeps the generic buyer
+    local buyer = RmContractorBridge.predictSellBuyer(farmlandId)
+    -- A refusal comes before cancelSession, so it leaves the farm's open session alone
+    local relationship = readBuyerRelationship(farmlandId, farmId, buyer)
+    if relationship ~= nil and relationship.refused then
+        Log:trace("<<< doStartSell: refused")
+        return refusedSnapshot(farmlandId, farmId, RmNegotiationEngine.MODE_SELL, relationship, buyer.name)
+    end
     -- Cancel any existing session
     RmNegotiationManager.cancelSession(farmId)
     -- Get market value (server-authoritative)
@@ -552,10 +591,21 @@ local function doStartSell(farmlandId, farmId, listingPrice)
         Log:debug("NEGOTIATION: Listing price %.0f exceeds max %.0f", listingPrice, maxListing)
         return nil, "listing_too_high"
     end
-    -- The Contractor farmer predicted to take the land once sold; nil keeps the generic buyer
-    local buyer = RmContractorBridge.predictSellBuyer(farmlandId)
+    local shaping = nil
+    if relationship ~= nil then
+        shaping = {
+            factor = relationship.factor,
+            temperament = RmNegotiationEngine.farmerTemperament(relationship.farmerId,
+                RmNegotiationManager.temperamentSalt),
+        }
+        Log:debug("NEGOTIATION: Sell buyer farmland %d farm %d farmer #%s: score %s factor %.3f temperament %s",
+            farmlandId, farmId, tostring(relationship.farmerId), tostring(relationship.score), shaping.factor,
+            tostring(shaping.temperament))
+    else
+        Log:trace("  doStartSell: no predicted buyer or no score, unshaped buyer")
+    end
     -- Generate NPC buyer using player's listing price
-    local buyerProfile = RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
+    local buyerProfile = RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue, shaping)
     if buyerProfile == nil then return nil, "profile_generation_failed" end
     -- Create session
     RmNegotiationManager.sessions[farmId] = {
@@ -1495,6 +1545,11 @@ function RmNegotiationManager:consoleSell(farmlandIdStr, listingPriceStr)
     local snapshot, err = RmNegotiationManager.startSell(farmlandId, farmId, listingPrice)
     if snapshot == nil then
         return string.format("Failed: %s", tostring(err))
+    end
+    if snapshot.outcome == RmNegotiationEngine.OUTCOME_REFUSED then
+        Log:trace("  consoleSell: farmland %s refused by %s", tostring(farmlandId), tostring(snapshot.buyerName))
+        return string.format("Farmland %d: %s refused to buy (relationship below threshold). No cooldown.",
+            farmlandId, tostring(snapshot.buyerName))
     end
     return string.format("Farmland %d: Sell started (listing=%.0f). NPC opening bid=%.0f",
         farmlandId, listingPrice, snapshot.lastCounter or 0)

@@ -56,6 +56,7 @@
         <text name="rm_fm_neg_rejected" text="Your offer was too low. %s won't negotiate further."/>
         <text name="rm_fm_neg_dismissed" text="%s isn't interested in selling right now."/>
         <text name="rm_fm_neg_refused" text="%s won't sell: you have fallen out."/>
+        <text name="rm_fm_neg_refusedSell" text="%s won't buy: you have fallen out."/>
         <text name="rm_fm_neg_npcWalked" text="The buyer walked away - your asking price was too high."/>
         <text name="rm_fm_neg_walkedAway" text="You walked away from the negotiation."/>
         <text name="rm_fm_neg_ended" text="The negotiation has ended."/>
