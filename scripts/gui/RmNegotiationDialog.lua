@@ -20,6 +20,9 @@ RmNegotiationDialog.STATE_PROPOSAL = 5
 RmNegotiationDialog.STATE_COMPLETED = 6
 RmNegotiationDialog.STATE_WAITING = 7
 
+-- Sell header name cap: a buyer name plus the longest sell text stays inside the 620px header line
+RmNegotiationDialog.SELL_NAME_MAX_WIDTH = "320px"
+
 -- ============================================================================
 -- CONSTRUCTOR
 -- ============================================================================
@@ -89,6 +92,8 @@ function RmNegotiationDialog:onGuiSetupFinished()
     self.headerChipTextElement = self:getDescendantById("headerChipTextElement")
     self.headerSeparatorElement = self:getDescendantById("headerSeparatorElement")
     self.headerInfoElement = self:getDescendantById("headerInfoElement")
+    -- The profile's name cap, restored on every buy because a sell lowers it on this reused instance
+    self.headerNameMaxWidth = self.headerNameElement ~= nil and self.headerNameElement.textMaxWidth or nil
     self.statusTextElement = self:getDescendantById("statusTextElement")
     self.historyList = self:getDescendantById("historyList")
     self.textInputElement = self:getDescendantById("textInputElement")
@@ -207,8 +212,8 @@ function RmNegotiationDialog:updateFromSnapshot(snapshot)
     Log:trace("<<< RmNegotiationDialog:updateFromSnapshot()")
 end
 
---- Fills the header line: buy shows name, relationship chip, "|" and area; sell shows area and market value.
----@param snapshot table Negotiation snapshot (farmlandId, mode)
+--- Fills the header line: buy shows name, chip, "|" and area; sell shows the predicted buyer, "|", area and value.
+---@param snapshot table Negotiation snapshot (farmlandId, mode, buyerName on a sell)
 function RmNegotiationDialog:updateHeader(snapshot)
     Log:trace(">>> RmNegotiationDialog:updateHeader(farmlandId=%s, mode=%s)", tostring(snapshot.farmlandId),
         tostring(snapshot.mode))
@@ -220,11 +225,19 @@ function RmNegotiationDialog:updateHeader(snapshot)
         Log:trace("  updateHeader: farmland unknown, header cleared")
         self.headerInfoElement:setText("")
     elseif not isBuy then
-        Log:trace("  updateHeader: sell, area and market value")
+        name = snapshot.buyerName
+        if name ~= nil then
+            Log:trace("  updateHeader: sell, buyer '%s', area and market value", name)
+            self.headerNameElement.textMaxWidth = GuiUtils.getNormalizedXValue(RmNegotiationDialog.SELL_NAME_MAX_WIDTH)
+            self.headerNameElement:setText(name)
+        else
+            Log:trace("  updateHeader: sell, no predicted buyer, area and market value")
+        end
         self.headerInfoElement:setText(string.format(g_i18n:getText("rm_fm_neg_dlg_headerAreaValue"),
             farmland.areaInHa, g_i18n:formatMoney(farmland.price, 0, true, true)))
     else
         name = RmNegotiationUI.getSellerName(snapshot.farmlandId)
+        self.headerNameElement.textMaxWidth = self.headerNameMaxWidth
         local farmId = RmNegotiationUI.currentFarmId or g_currentMission:getFarmId()
         chip = RmContractorBridge.getRelationshipChip(farmId, snapshot.farmlandId)
         Log:trace("  updateHeader: buy, farm %s, chip %s", tostring(farmId), chip ~= nil and "shown" or "hidden")
@@ -237,7 +250,7 @@ function RmNegotiationDialog:updateHeader(snapshot)
     end
 
     -- The dialog instance is reused, so every call sets each cell's visibility
-    local showName = farmland ~= nil and isBuy
+    local showName = farmland ~= nil and name ~= nil
     self.headerNameElement:setVisible(showName)
     self.headerSeparatorElement:setVisible(showName)
     self.headerChipElement:setVisible(chip ~= nil)

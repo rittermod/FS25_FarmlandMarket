@@ -2,14 +2,15 @@
     RmContractorBridge.lua
     Read-only adapter for The Contractor (FS25_TheContractor).
 
-    Answers three questions for FarmlandMarket: which Contractor farmer holds a
-    farmland, how a farm stands with that farmer, and whose farmyard a farmland
-    is. It reaches The Contractor through g_currentMission.TheContractor and
-    changes none of its state.
+    Answers four questions for FarmlandMarket: which Contractor farmer holds a
+    farmland, how a farm stands with that farmer, whose farmyard a farmland is,
+    and which farmer would take a farmland that loses its owner. It reaches The
+    Contractor through g_currentMission.TheContractor and changes none of its state.
     Contractor public API (stable): Farmers:getHolder, Relationships:getScore.
     Contractor internal (may change): Farmers:getFarmers, a farmer's yardFarmlandId,
-    Farmers:hasGenerated, Relationships.getBand, Relationships:getChip,
-    Relationships.REFUSES_BELOW, Relationships.MAX_SCORE.
+    Farmers:hasGenerated, Farmers.getLand, Farmers.getFreeYards, Farmers.chooseHolder,
+    Farmers.chooseYardHolder, Yards:getYards, Relationships.getBand,
+    Relationships:getChip, Relationships.REFUSES_BELOW, Relationships.MAX_SCORE.
     Whenever it cannot answer (The Contractor absent, a function missing,
     farmers not made yet, or a call that raised earlier this session) it
     answers nil, and FarmlandMarket keeps its own behavior; a missing constant
@@ -69,6 +70,8 @@ RmContractorBridge.available = false
 RmContractorBridge.yardReadsAvailable = false
 -- The relationship chip needs Relationships:getChip, which detection does not require
 RmContractorBridge.chipReadsAvailable = false
+-- The sell buyer needs the holder rules and Yards:getYards, which detection does not require
+RmContractorBridge.buyerReadsAvailable = false
 RmContractorBridge.reason = RmContractorBridge.REASON_NOT_DETECTED
 RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
 RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
@@ -192,6 +195,7 @@ function RmContractorBridge.detect()
     RmContractorBridge.available = false
     RmContractorBridge.yardReadsAvailable = false
     RmContractorBridge.chipReadsAvailable = false
+    RmContractorBridge.buyerReadsAvailable = false
     RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
     RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
 
@@ -246,6 +250,21 @@ function RmContractorBridge.detect()
         Log:info("Contractor adapter: The Contractor has no Relationships.getChip - no relationship chip is shown")
     end
 
+    -- Contractor internal (may change): the holder rules and Yards:getYards; if any disappears, FM names no
+    -- sell buyer and keeps its other reads. Yards is not a detection requirement, so its type is checked first.
+    local farmers, yards = contractor.Farmers, contractor.Yards
+    RmContractorBridge.buyerReadsAvailable = type(farmers.getFarmers) == "function"
+        and type(farmers.getLand) == "function"
+        and type(farmers.getFreeYards) == "function"
+        and type(farmers.chooseHolder) == "function"
+        and type(farmers.chooseYardHolder) == "function"
+        and type(yards) == "table" and type(yards.getYards) == "function"
+    if RmContractorBridge.buyerReadsAvailable then
+        Log:trace("  detect: holder rules present - sell buyer reads on")
+    else
+        Log:info("Contractor adapter: The Contractor has no holder rules - sell negotiations name no buyer")
+    end
+
     RmContractorBridge.available = true
     RmContractorBridge.reason = nil
     Log:info("Contractor adapter: The Contractor detected - farmer and relationship reads on")
@@ -258,6 +277,7 @@ function RmContractorBridge.reset()
     RmContractorBridge.available = false
     RmContractorBridge.yardReadsAvailable = false
     RmContractorBridge.chipReadsAvailable = false
+    RmContractorBridge.buyerReadsAvailable = false
     RmContractorBridge.reason = RmContractorBridge.REASON_NOT_DETECTED
     RmContractorBridge.refusesBelow = RmContractorBridge.FALLBACK_REFUSES_BELOW
     RmContractorBridge.maxScore = RmContractorBridge.FALLBACK_MAX_SCORE
@@ -426,6 +446,71 @@ function RmContractorBridge.getYardFarmer(farmlandId)
         tostring(farmlandId), tostring(yardFarmer.id), tostring(yardFarmer.name))
     Log:trace("<<< RmContractorBridge.getYardFarmer = #%s", tostring(yardFarmer.id))
     return yardFarmer
+end
+
+--- The Contractor farmer who would take a farmland once it has no owner, by The Contractor's own holder rules.
+---@param farmlandId number farmland id
+---@return table|nil buyer { id = number, name = string }, a copy; nil when no farmer would or unavailable
+function RmContractorBridge.predictSellBuyer(farmlandId)
+    Log:trace(">>> RmContractorBridge.predictSellBuyer(%s)", tostring(farmlandId))
+    if RmContractorBridge.available and not RmContractorBridge.buyerReadsAvailable then
+        Log:trace("<<< RmContractorBridge.predictSellBuyer = nil (no holder rules)")
+        return nil
+    end
+
+    local context = string.format("farmlandId=%s", tostring(farmlandId))
+    local contractor = readyContractor("predictSellBuyer", context)
+    if contractor == nil then
+        Log:trace("<<< RmContractorBridge.predictSellBuyer = nil (not ready)")
+        return nil
+    end
+
+    -- Contractor internal (may change): getFarmers, getLand, getFreeYards, chooseHolder, chooseYardHolder and
+    -- Yards:getYards; if any disappears, FM names no buyer. Field land takes the field rule unless it is a
+    -- declared yard; a yard takes the yard rule. The farmer is copied inside the guard, so an answer whose
+    -- fields cannot be read turns the adapter off like any raising read.
+    local okRule, answer = callContractor("Farmers holder rules", context, function()
+        local function copy(rule, farmer)
+            return { rule = rule, buyer = farmer ~= nil and { id = farmer.id, name = tostring(farmer.name) } or nil }
+        end
+        local farmers = contractor.Farmers
+        local people = farmers:getFarmers()
+        local land = farmers.getLand()
+        local yard = nil
+        for _, entry in ipairs((contractor.Yards:getYards())) do
+            if entry.farmlandId == farmlandId and entry.x ~= nil then
+                yard = entry
+                break
+            end
+        end
+        local field = land[farmlandId]
+        if field ~= nil and (yard == nil or yard.how ~= "declared") then
+            return copy("field rule", farmers.chooseHolder(people, field, land, farmers.getFreeYards()))
+        end
+        if yard ~= nil then
+            local yardArg = { farmlandId = yard.farmlandId, x = yard.x, z = yard.z, declared = yard.how == "declared" }
+            return copy("yard rule", farmers.chooseYardHolder(people, yardArg, land))
+        end
+        return { rule = nil, buyer = nil }
+    end)
+    if not okRule then
+        Log:trace("<<< RmContractorBridge.predictSellBuyer = nil (holder rules raised)")
+        return nil
+    end
+    if answer.rule == nil then
+        Log:trace("<<< RmContractorBridge.predictSellBuyer = nil (no field and no yard)")
+        return nil
+    end
+    if answer.buyer == nil then
+        Log:trace("<<< RmContractorBridge.predictSellBuyer = nil (%s names nobody)", answer.rule)
+        return nil
+    end
+
+    local buyer = answer.buyer
+    Log:debug("CONTRACTOR: farmland %s sells to farmer #%s %s (%s)",
+        tostring(farmlandId), tostring(buyer.id), buyer.name, answer.rule)
+    Log:trace("<<< RmContractorBridge.predictSellBuyer = #%s", tostring(buyer.id))
+    return buyer
 end
 
 -- ============================================================================

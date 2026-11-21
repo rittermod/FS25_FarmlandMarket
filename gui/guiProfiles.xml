@@ -54,7 +54,7 @@
         <autoValidateLayout value="true"/>
     </Profile>
 
-    <!-- Header seller name  - light text, one line, width follows the name up to a cap, then "..." -->
+    <!-- Header party name (seller, or the predicted buyer on a sell)  - light text, one line, width follows the name up to a cap, then "..." -->
     <Profile name="rmFmNegHeaderName" extends="fs25_textDefault" with="anchorTopLeft">
         <size value="400px 20px"/>
         <textAutoWidth value="true"/>

@@ -1,6 +1,6 @@
 --[[
     RmNegotiationResultEvent.lua
-    Host → client: negotiation result with sanitized snapshot.
+    Host -> client: negotiation result with sanitized snapshot.
 
     Sent by server after processing a RmNegotiationRequestEvent.
     Contains success/error status and a serialized session snapshot.
@@ -64,6 +64,9 @@ function RmNegotiationResultEvent:writeStream(streamId, connection)
         streamWriteBool(streamId, s.anchorPrice ~= nil)
         streamWriteFloat32(streamId, s.rejectFloor or 0)
         streamWriteBool(streamId, s.rejectFloor ~= nil)
+        -- A stream cannot carry nil, so "" stands for no predicted buyer
+        streamWriteString(streamId, s.buyerName or "")
+        Log:trace("  writeStream: buyerName '%s'", tostring(s.buyerName))
 
         -- Pending proposal
         streamWriteBool(streamId, s.pendingProposal ~= nil)
@@ -127,6 +130,9 @@ function RmNegotiationResultEvent:readStream(streamId, connection)
         local rejectFloorVal = streamReadFloat32(streamId)
         local hasRejectFloor = streamReadBool(streamId)
         s.rejectFloor = hasRejectFloor and rejectFloorVal or nil
+        s.buyerName = streamReadString(streamId)
+        if s.buyerName == "" then s.buyerName = nil end
+        Log:trace("  readStream: buyerName '%s'", tostring(s.buyerName))
 
         -- Pending proposal
         local hasProposal = streamReadBool(streamId)

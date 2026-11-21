@@ -11,7 +11,7 @@
             <!-- Title -->
             <Text profile="dialogTitle" text="" id="dialogTitleElement" position="0px -30px"/>
 
-            <!-- Header line: seller name, relationship chip | area (sell: area and market value only) -->
+            <!-- Header line: seller name, relationship chip | area (sell: predicted buyer | area and market value) -->
             <BoxLayout profile="rmFmNegHeaderLine" id="headerLayout" position="50px -65px" size="620px 20px">
                 <Text profile="rmFmNegHeaderName" text="" id="headerNameElement"/>
                 <GuiElement profile="rmFmNegHeaderChipBox" id="headerChipElement">

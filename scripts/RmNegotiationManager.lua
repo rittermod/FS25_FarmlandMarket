@@ -202,6 +202,7 @@ function RmNegotiationManager.createSnapshot(session)
         finalPrice = session.finalPrice,
         anchorPrice = session.profile and session.profile.anchorPrice or nil,
         rejectFloor = session.profile and session.profile.rejectFloor or nil,
+        buyerName = session.buyer and session.buyer.name or nil,
         lastOffer = session.lastOffer,
         lastAsk = session.lastAsk,
     }
@@ -551,6 +552,8 @@ local function doStartSell(farmlandId, farmId, listingPrice)
         Log:debug("NEGOTIATION: Listing price %.0f exceeds max %.0f", listingPrice, maxListing)
         return nil, "listing_too_high"
     end
+    -- The Contractor farmer predicted to take the land once sold; nil keeps the generic buyer
+    local buyer = RmContractorBridge.predictSellBuyer(farmlandId)
     -- Generate NPC buyer using player's listing price
     local buyerProfile = RmNegotiationEngine.generateNpcBuyer(listingPrice, marketValue)
     if buyerProfile == nil then return nil, "profile_generation_failed" end
@@ -568,11 +571,13 @@ local function doStartSell(farmlandId, farmId, listingPrice)
         pendingProposal = nil,
         outcome = nil,
         finalPrice = nil,
+        buyer = buyer,
     }
     -- Acquire lock
     RmNegotiationManager.locks[farmlandId] = farmId
-    Log:info("NEGOTIATION: Started sell on farmland %d (listing=%.0f, NPC opening=%.0f)",
-        farmlandId, listingPrice, buyerProfile.npcOpening)
+    Log:info("NEGOTIATION: Started sell on farmland %d (listing=%.0f, NPC opening=%.0f, buyer=%s)",
+        farmlandId, listingPrice, buyerProfile.npcOpening,
+        buyer ~= nil and string.format("#%s %s", tostring(buyer.id), buyer.name) or "none")
     return RmNegotiationManager.createSnapshot(RmNegotiationManager.sessions[farmId])
 end
 
