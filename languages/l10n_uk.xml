@@ -24,6 +24,7 @@
         <text name="rm_fm_listPrice" text="Ціна в оголошенні"/>
         <text name="rm_fm_marketValue" text="Ринкова вартість"/>
         <text name="rm_fm_notForSale" text="Не продається"/>
+        <text name="rm_fm_willNotSell" text="Will not sell"/>
         <text name="rm_fm_forSale" text="Продається"/>
 
         <!-- Кнопки дій -->

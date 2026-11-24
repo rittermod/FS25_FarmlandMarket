@@ -3,10 +3,11 @@
 --
 -- MessageDialog subclass with a SmoothList of the farmlands the local farm
 -- is watching (watched AND still eligible for availability). Each row shows
--- the farmland's display name, area in hectares (plus an expiry-day suffix
--- when listed), and either the formatted listing price or "Not for sale" on
--- the right. Entries are curated from the map's action menu (RmWatchlistUI)
--- and persisted by RmWatchlistStore.
+-- the farmland's display name and area in hectares (plus an expiry-day suffix
+-- when listed, unless the farmer will not sell to this farm);
+-- populateCellForItemInSection owns the right column's text and color.
+-- Entries are curated from the map's action menu (RmWatchlistUI) and
+-- persisted by RmWatchlistStore.
 
 local Log = RmLogging.getLogger("FarmlandMarket")
 
@@ -97,8 +98,9 @@ end
 ---@param farmlands table map of farmlandId -> Farmland (e.g. g_farmlandManager:getFarmlands())
 ---@param eligibilityFn function predicate(farmland) -> boolean filtering pool members
 ---@param availabilityTable table map of farmlandId -> { isForSale, expiryDay, listingDay, listingPrice } or nil
----@return table[] sorted array of { farmlandId, name, areaInHa, isForSale, price, expiryDay, sortKey }
-function RmWatchlistDialog.buildEntries(farmlands, eligibilityFn, availabilityTable)
+---@param willNotSellFn function|nil predicate(farmlandId) -> boolean, true when the farmer will not sell to this farm
+---@return table[] sorted array of { farmlandId, name, areaInHa, isForSale, willNotSell, price, expiryDay, sortKey }
+function RmWatchlistDialog.buildEntries(farmlands, eligibilityFn, availabilityTable, willNotSellFn)
     -- Count input rows up-front so the entry trace carries the same shape as
     -- the rest of the dialog's per-call traces. pairs is used because
     -- farmlands is keyed by farmland id, so the # operator is unreliable.
@@ -156,11 +158,16 @@ function RmWatchlistDialog.buildEntries(farmlands, eligibilityFn, availabilityTa
                 nilAreaCount = nilAreaCount + 1
                 areaInHa = 0
             end
+            local willNotSell = willNotSellFn ~= nil and willNotSellFn(farmlandId) == true
+            if willNotSell then
+                Log:trace("  buildEntries: farmland %s marked Will not sell", tostring(farmlandId))
+            end
             local entry = {
                 farmlandId = farmlandId,
                 name = rawName,
                 areaInHa = areaInHa,
                 isForSale = isForSale,
+                willNotSell = willNotSell,
                 price = price,
                 expiryDay = expiryDay,
                 sortKey = sortKey,
@@ -292,7 +299,8 @@ function RmWatchlistDialog:refreshEntries()
     self.entries = RmWatchlistDialog.buildEntries(
         farmlands,
         watchedAndEligible,
-        RmFmAvailability.availability
+        RmFmAvailability.availability,
+        RmFarmlandMarket.isWillNotSell
     )
     Log:debug("RmWatchlistDialog:refreshEntries: %d entries", #self.entries)
 end
@@ -351,17 +359,20 @@ function RmWatchlistDialog:populateCellForItemInSection(list, section, index, ce
     -- same farmland.
     nameElement:setText(RmWatchlistUI._formatFarmlandName(entry.name, entry.farmlandId))
 
-    -- Secondary text: area, plus expiry suffix when listed.
-    if entry.isForSale and entry.expiryDay ~= nil then
+    -- Secondary text: area, plus expiry suffix when listed and the farmer will sell to this farm.
+    if entry.isForSale and entry.expiryDay ~= nil and not entry.willNotSell then
         subtextElement:setText(string.format("%.1f ha . expires day %d",
             entry.areaInHa, entry.expiryDay))
     else
         subtextElement:setText(string.format("%.1f ha", entry.areaInHa))
     end
 
-    -- Right column: price (listed) or "Not for sale" (anything else).
+    -- Right column: text and color are set on every branch, because list cells are reused across rows.
     local isCB = RmFarmlandMarket.isColorBlindMode
-    if entry.isForSale and entry.price ~= nil then
+    if entry.willNotSell then
+        priceElement:setText(g_i18n:getText("rm_fm_willNotSell"))
+        priceElement:setTextColor(unpack(RmFarmlandMarket.COLOR_WATCHLIST_WILL_NOT_SELL[isCB]))
+    elseif entry.isForSale and entry.price ~= nil then
         priceElement:setText(g_i18n:formatMoney(entry.price))
         priceElement:setTextColor(unpack(RmFarmlandMarket.COLOR_WATCHLIST_LISTED_PRICE[isCB]))
     else

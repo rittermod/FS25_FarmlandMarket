@@ -22,6 +22,11 @@ RmFarmlandMarket.COLOR_NOT_FOR_SALE = {}
 RmFarmlandMarket.COLOR_NOT_FOR_SALE[false] = {0.4, 0.05, 0.05, 1}        -- red
 RmFarmlandMarket.COLOR_NOT_FOR_SALE[true]  = {0.9473, 0.5271, 0.0, 1}    -- orange (CB)
 
+-- Will not sell: hotspot tint and legend swatch
+RmFarmlandMarket.COLOR_WILL_NOT_SELL = {}
+RmFarmlandMarket.COLOR_WILL_NOT_SELL[false] = {0.45, 0.15, 0.60, 1}      -- purple
+RmFarmlandMarket.COLOR_WILL_NOT_SELL[true]  = {0.60, 0.60, 0.60, 1}      -- pale grey (CB)
+
 -- Watchlist row text colors (used by RmWatchlistDialog.populateCellForItemInSection).
 -- Sibling tables to the hotspot palette above; values tuned for body text on
 -- the dark dialog background, not for the bright map markers.
@@ -32,6 +37,11 @@ RmFarmlandMarket.COLOR_WATCHLIST_LISTED_PRICE[true]  = {0.40, 0.70, 1.00, 1}  --
 RmFarmlandMarket.COLOR_WATCHLIST_NOT_FOR_SALE = {}
 RmFarmlandMarket.COLOR_WATCHLIST_NOT_FOR_SALE[false] = {0.7, 0.7, 0.7, 1}     -- light grey
 RmFarmlandMarket.COLOR_WATCHLIST_NOT_FOR_SALE[true]  = {0.95, 0.60, 0.20, 1}  -- light orange (CB)
+
+-- Will not sell: watchlist row text
+RmFarmlandMarket.COLOR_WATCHLIST_WILL_NOT_SELL = {}
+RmFarmlandMarket.COLOR_WATCHLIST_WILL_NOT_SELL[false] = {0.50, 0.50, 0.50, 1}   -- mid grey
+RmFarmlandMarket.COLOR_WATCHLIST_WILL_NOT_SELL[true]  = {0.85, 0.85, 0.85, 1}   -- pale grey (CB)
 
 -- Overlay colors: boolean-keyed [false]=normal, [true]=colorBlind
 RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED = {}
@@ -49,6 +59,16 @@ RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE_SELECTED[true]  = {0.9473, 0.5271, 0.
 RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE = {}
 RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE[false] = {0.25, 0.04, 0.04}   -- dim red
 RmFarmlandMarket.OVERLAY_COLOR_UNAVAILABLE[true]  = {0.58, 0.32, 0.0}    -- dim orange (CB)
+
+-- Will not sell: area overlay of the selected farmland
+RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL_SELECTED = {}
+RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL_SELECTED[false] = {0.65, 0.30, 0.85}   -- light purple
+RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL_SELECTED[true]  = {0.90, 0.90, 0.90}   -- near white (CB)
+
+-- Will not sell: area overlay of every other farmland
+RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL = {}
+RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL[false] = {0.45, 0.15, 0.60}   -- purple
+RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL[true]  = {0.65, 0.65, 0.65}   -- pale grey (CB)
 
 -- Cached pricing details per farmland id (populated during updatePrice)
 RmFarmlandMarket.priceData = {}
@@ -209,6 +229,51 @@ FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
 -- BUY FLOW VALIDATION HOOKS
 -- ============================================================================
 
+--- Why a Contractor farmer will not sell a farmland to a farm, or nil when no farmer refuses.
+---@param farmlandId number Farmland ID
+---@param farmId number|nil the asking farm; a sell (0), a spectator or nil is never refused for the farmer's score
+---@return string|nil reason "farmer_yard" or "farmer_refused"; nil when no farmer refuses
+---@return table|nil farmer "farmer_yard": { id, name }; "farmer_refused": { id, score, refusesBelow }
+function RmFarmlandMarket.getFarmerRefusal(farmlandId, farmId)
+    Log:trace(">>> getFarmerRefusal(%s, %s)", tostring(farmlandId), tostring(farmId))
+    if RmFmAvailability.isFarmerYard(farmlandId) then
+        local farmer = RmContractorBridge.getYardFarmer(farmlandId)
+        Log:trace("<<< getFarmerRefusal = farmer_yard (farmer #%s)", tostring(farmer ~= nil and farmer.id or nil))
+        return "farmer_yard", farmer
+    end
+    -- Only a buy by a real farm of unowned land; the range also rejects the reserved guided-tour and invalid ids
+    local isBuy = g_farmlandManager:getFarmlandOwner(farmlandId) == FarmlandManager.NO_OWNER_FARM_ID
+        and type(farmId) == "number" and farmId >= 1 and farmId <= FarmManager.MAX_NUM_FARMS
+    if not isBuy then
+        Log:trace("<<< getFarmerRefusal = nil (not a buy by a real farm of unowned land)")
+        return nil, nil
+    end
+    local relationship = RmContractorBridge.getRelationship(farmId, farmlandId)
+    if relationship == nil then
+        Log:trace("<<< getFarmerRefusal = nil (no farmer relationship)")
+        return nil, nil
+    end
+    local refusesBelow = RmContractorBridge.getRefusesBelow()
+    if not RmNegotiationEngine.isRefused(relationship.score, refusesBelow) then
+        Log:trace("<<< getFarmerRefusal = nil (farmer #%s does not refuse, score %s)",
+            tostring(relationship.farmerId), tostring(relationship.score))
+        return nil, nil
+    end
+    Log:trace("<<< getFarmerRefusal = farmer_refused (farmer #%s, score %s below %s)",
+        tostring(relationship.farmerId), tostring(relationship.score), tostring(refusesBelow))
+    return "farmer_refused", { id = relationship.farmerId, score = relationship.score, refusesBelow = refusesBelow }
+end
+
+--- Whether a farmland's Contractor farmer will not sell it to the local farm; display only, the buy paths decide.
+---@param farmlandId number Farmland ID
+---@return boolean willNotSell
+function RmFarmlandMarket.isWillNotSell(farmlandId)
+    local farmId = g_currentMission:getFarmId()
+    local reason = RmFarmlandMarket.getFarmerRefusal(farmlandId, farmId)
+    Log:trace("  isWillNotSell(%s) for farm %s = %s", tostring(farmlandId), tostring(farmId), tostring(reason))
+    return reason ~= nil
+end
+
 --- Why a farm may not buy a farmland, or nil when the buy may go ahead.
 ---@param farmlandId number Farmland ID
 ---@param farmId number|nil the buying farm; a sell (0), a spectator or nil is never refused for the farmer
@@ -216,34 +281,17 @@ FarmlandManager.getPricePerHa = Utils.overwrittenFunction(
 ---@return table|nil farmer "farmer_yard": { id, name }; "farmer_refused": { id, score, refusesBelow }
 function RmFarmlandMarket.getBuyRefusal(farmlandId, farmId)
     Log:trace(">>> getBuyRefusal(%s, %s)", tostring(farmlandId), tostring(farmId))
-    if RmFmAvailability.isFarmerYard(farmlandId) then
-        local farmer = RmContractorBridge.getYardFarmer(farmlandId)
+    local reason, farmer = RmFarmlandMarket.getFarmerRefusal(farmlandId, farmId)
+    if reason == "farmer_yard" then
         Log:debug("BUY: refusal for farmland %s: farmer_yard", tostring(farmlandId))
         Log:trace("<<< getBuyRefusal = farmer_yard")
-        return "farmer_yard", farmer
-    end
-    -- Only a buy by a real farm of unowned land; the range also rejects the reserved guided-tour and invalid ids
-    local isBuy = g_farmlandManager:getFarmlandOwner(farmlandId) == FarmlandManager.NO_OWNER_FARM_ID
-        and type(farmId) == "number" and farmId >= 1 and farmId <= FarmManager.MAX_NUM_FARMS
-    if isBuy then
-        local relationship = RmContractorBridge.getRelationship(farmId, farmlandId)
-        if relationship ~= nil then
-            local refusesBelow = RmContractorBridge.getRefusesBelow()
-            if RmNegotiationEngine.isRefused(relationship.score, refusesBelow) then
-                Log:debug("BUY: refusal for farmland %s farm %s: farmer_refused (farmer #%s, score %s below %s)",
-                    tostring(farmlandId), tostring(farmId), tostring(relationship.farmerId),
-                    tostring(relationship.score), tostring(refusesBelow))
-                Log:trace("<<< getBuyRefusal = farmer_refused")
-                return "farmer_refused",
-                    { id = relationship.farmerId, score = relationship.score, refusesBelow = refusesBelow }
-            end
-            Log:trace("  getBuyRefusal: farmer #%s does not refuse (score %s)",
-                tostring(relationship.farmerId), tostring(relationship.score))
-        else
-            Log:trace("  getBuyRefusal: no farmer relationship")
-        end
-    else
-        Log:trace("  getBuyRefusal: not a buy by a real farm of unowned land, farmer check skipped")
+        return reason, farmer
+    elseif reason == "farmer_refused" then
+        Log:debug("BUY: refusal for farmland %s farm %s: farmer_refused (farmer #%s, score %s below %s)",
+            tostring(farmlandId), tostring(farmId), tostring(farmer.id),
+            tostring(farmer.score), tostring(farmer.refusesBelow))
+        Log:trace("<<< getBuyRefusal = farmer_refused")
+        return reason, farmer
     end
     if RmFmSettings.isAvailabilityEnabled() and not RmFmAvailability.isForSale(farmlandId) then
         Log:debug("BUY: refusal for farmland %s: not_for_sale", tostring(farmlandId))
@@ -388,13 +436,11 @@ InGameMenuMapFrame.setMapInputContext = Utils.overwrittenFunction(
 -- CONTEXT BOX DISPLAY
 -- ============================================================================
 
---- Re-apply FM value overrides to the farmlandValue element.
---- Called from showContextBox append AND from the PF compat hook (which runs
---- after PF's AdditionalFieldBuyInfo:updateContextBox() overwrites the value).
+--- Re-apply FM value overrides to the farmlandValue element; also re-run after Precision Farming rewrites it.
 ---@param contextBox table The context box GUI element
 ---@param farmlandId number The farmland ID
 ---@param farmland table The Farmland object
-local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
+function RmFarmlandMarket.applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     if contextBox == nil or farmland == nil then return end
 
     local valueEl = contextBox:getDescendantByName("farmlandValue")
@@ -411,11 +457,11 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
         end
     end
 
-    -- "Not for sale" override (takes precedence over listing price); a farmer's farmyard shows it
-    -- whatever the availability setting
-    if RmFmAvailability.isFarmerYard(farmlandId) then
-        valueEl:setText(g_i18n:getText("rm_fm_notForSale"))
-        Log:trace("  context box: farmland %d not for sale (a farmer's farmyard)", farmlandId)
+    -- "Will not sell", then "Not for sale", take precedence over the listing price; Will not sell in both
+    -- availability modes and at any price
+    if RmFarmlandMarket.isWillNotSell(farmlandId) then
+        valueEl:setText(g_i18n:getText("rm_fm_willNotSell"))
+        Log:trace("  context box: farmland %d will not sell to the local farm", farmlandId)
     elseif RmFmSettings.isAvailabilityEnabled()
        and RmFmAvailability.isEligibleForAvailability(farmland)
        and not RmFmAvailability.isForSale(farmlandId) then
@@ -442,8 +488,40 @@ local function applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     end
 end
 
---- Replace farmland value with "Not for sale" for unavailable farmlands.
---- Runs after base showContextBox (and PF override if active).
+--- The l10n key for the context box's value label: market value, list price or the base value label.
+---@param farmland table the selected Farmland
+---@return string key "rm_fm_marketValue", "rm_fm_listPrice" or "ui_sellValue"
+function RmFarmlandMarket.getContextBoxLabelKey(farmland)
+    -- Gates mirror setMapInputContext: buy-relabel on eligibility (excludes $0 plots), sell-relabel on
+    -- positive market value (eligibility excludes player-owned by design)
+    local isOwned = farmland.farmId == g_currentMission:getFarmId()
+    local key
+    if isOwned and RmFmSettings.isNegotiateSellEnabled()
+       and RmFmAvailability.hasPositiveMarketValue(farmland) then
+        key = "rm_fm_marketValue"
+    elseif not isOwned and RmFmSettings.isNegotiateBuyEnabled()
+           and RmFmAvailability.isEligibleForAvailability(farmland)
+           and RmFmAvailability.isForSale(farmland.id)
+           and not RmFarmlandMarket.isWillNotSell(farmland.id) then
+        key = "rm_fm_listPrice"
+    else
+        key = "ui_sellValue"
+    end
+    Log:trace("  context box label for farmland %s: %s", tostring(farmland.id), key)
+    return key
+end
+
+--- Override the farmland value label and value after the base context box (and Precision Farming) fill it.
+---@param contextBox table the context box GUI element
+---@param hotspot table|nil the selected map hotspot
+---@param description string|nil the base description text
+---@param imageFilename string|nil the base image file
+---@param uvs table|nil the base image UVs
+---@param farmId number|nil the owning farm
+---@param playerName string|nil the base player name
+---@param isPlaceable boolean|nil true for a placeable
+---@param isVehicle boolean|nil true for a vehicle
+---@param isFarmland boolean|nil true for a farmland; every other box is left alone
 InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
     InGameMenuMapUtil.showContextBox,
     function(contextBox, hotspot, description, imageFilename, uvs, farmId, playerName, isPlaceable, isVehicle, isFarmland)
@@ -477,27 +555,13 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
             end
         end
 
-        -- Label overrides (PF doesn't touch labels, so this only runs here).
-        -- Gates mirror setMapInputContext: buy-relabel on eligibility (excludes
-        -- $0 plots), sell-relabel on positive market value (eligibility
-        -- excludes player-owned by design).
+        -- Label override (PF doesn't touch labels, so this only runs here)
         if contextBox.rmFmValueLabel ~= nil and farmland ~= nil then
-            local isOwned = farmland.farmId == g_currentMission:getFarmId()
-            if isOwned and RmFmSettings.isNegotiateSellEnabled()
-               and RmFmAvailability.hasPositiveMarketValue(farmland) then
-                contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_marketValue") .. ":")
-            elseif not isOwned and RmFmSettings.isNegotiateBuyEnabled()
-                   and RmFmAvailability.isEligibleForAvailability(farmland)
-                   and RmFmAvailability.isForSale(farmland.id) then
-                contextBox.rmFmValueLabel:setText(g_i18n:getText("rm_fm_listPrice") .. ":")
-            else
-                contextBox.rmFmValueLabel:setText(g_i18n:getText("ui_sellValue") .. ":")
-            end
+            contextBox.rmFmValueLabel:setText(g_i18n:getText(RmFarmlandMarket.getContextBoxLabelKey(farmland)) .. ":")
         end
 
-        -- Value overrides (listing price, not-for-sale, cooldown)
-        -- Uses shared helper so PF compat hook can re-apply after PF overwrites
-        applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
+        -- Value overrides; the PF compat hook re-applies them after PF overwrites the value
+        RmFarmlandMarket.applyFarmlandValueOverrides(contextBox, farmlandId, farmland)
     end
 )
 
@@ -505,8 +569,15 @@ InGameMenuMapUtil.showContextBox = Utils.appendedFunction(
 -- FARMLAND LEGEND
 -- ============================================================================
 
---- Customize farmland legend at cell render time for guaranteed consistency.
---- Entry 1 "Unowned" -> "For sale", Entry 2 "Currently Selected" -> "Not for sale" (red).
+-- With availability on, two hooks own the Farmlands legend: the populate append below relabels the first
+-- two base rows, and addWillNotSellLegendItem adds its own row when the selector rebuilds the list.
+
+--- Relabel the first two base legend rows at cell render time.
+---@param self table InGameMenuMapFrame instance
+---@param list table the list being populated; only the legend list is touched
+---@param section number the list section
+---@param index number the row index
+---@param cell table the row cell
 InGameMenuMapFrame.populateCellForItemInSection = Utils.appendedFunction(
     InGameMenuMapFrame.populateCellForItemInSection,
     function(self, list, section, index, cell)
@@ -534,11 +605,41 @@ InGameMenuMapFrame.populateCellForItemInSection = Utils.appendedFunction(
     end
 )
 
+--- Insert the "Will not sell" row third in the Farmlands legend the selector just rebuilt.
+---@param frame table InGameMenuMapFrame instance
+---@param state number the selected map overview state
+function RmFarmlandMarket.addWillNotSellLegendItem(frame, state)
+    if state ~= InGameMenuMapFrame.MAP_FARMLANDS then
+        Log:trace("  legend: state %s is not the Farmlands view, no Will not sell row", tostring(state))
+        return
+    end
+    if not RmFmSettings.isAvailabilityEnabled() then
+        Log:trace("  legend: availability off, no Will not sell row")
+        return
+    end
+    if not RmContractorBridge.isAvailable() then
+        Log:trace("  legend: The Contractor not available, no Will not sell row")
+        return
+    end
+    table.insert(frame.farmlandItems, 3, {
+        name = g_i18n:getText("rm_fm_willNotSell"),
+        color = RmFarmlandMarket.COLOR_WILL_NOT_SELL[RmFarmlandMarket.isColorBlindMode],
+    })
+    frame.filterList:reloadData()
+    Log:debug("LEGEND: added the Will not sell row third (%d rows)", #frame.farmlandItems)
+end
+
+InGameMenuMapFrame.onClickMapOverviewSelector = Utils.appendedFunction(
+    InGameMenuMapFrame.onClickMapOverviewSelector,
+    RmFarmlandMarket.addWillNotSellLegendItem
+)
+
 -- ============================================================================
 -- HOTSPOT COLOR MANAGEMENT
 -- ============================================================================
 
---- Override FarmlandHotspot:updateColors() to apply red tint to unavailable fields
+--- Tint an eligible farmland's hotspot: the Will not sell color first, else red when not for sale.
+---@param self table the FarmlandHotspot
 FarmlandHotspot.updateColors = Utils.appendedFunction(FarmlandHotspot.updateColors, function(self)
     -- Guard: check log level before trace (performance optimization)
     if Log.level <= RmLogging.LOG_LEVEL.TRACE then
@@ -561,9 +662,16 @@ FarmlandHotspot.updateColors = Utils.appendedFunction(FarmlandHotspot.updateColo
         return
     end
 
-    -- Apply red tint if not for sale
-    if not RmFmAvailability.isForSale(farmland.id) then
-        local color = RmFarmlandMarket.COLOR_NOT_FOR_SALE[RmFarmlandMarket.isColorBlindMode]
+    local color = nil
+    if RmFarmlandMarket.isWillNotSell(farmland.id) then
+        color = RmFarmlandMarket.COLOR_WILL_NOT_SELL[RmFarmlandMarket.isColorBlindMode]
+        if Log.level <= RmLogging.LOG_LEVEL.TRACE then
+            Log:trace("  hotspot: farmland %d painted Will not sell", farmland.id)
+        end
+    elseif not RmFmAvailability.isForSale(farmland.id) then
+        color = RmFarmlandMarket.COLOR_NOT_FOR_SALE[RmFarmlandMarket.isColorBlindMode]
+    end
+    if color ~= nil then
         self:setColor(color[1], color[2], color[3])
         self.colorDisabled[1] = color[1]
         self.colorDisabled[2] = color[2]
@@ -580,8 +688,7 @@ end)
 -- MAP OVERLAY COLOR MANAGEMENT (menu map farmland area overlay)
 -- ============================================================================
 
---- Apply availability tint to farmland area overlays after standard colors are set.
---- Red for unavailable, green for available (for sale).
+--- Tint farmland area overlays: Will not sell color first, else red when not for sale, green when for sale.
 --- Called as appendedFunction on both build methods.
 --- NOTE: key param is the farmlands table key (from pairs()), not farmland.id
 ---@param self table MapOverlayGenerator instance
@@ -609,7 +716,12 @@ local function applyAvailabilityOverlayColors(self, selectedFarmland)
         if RmFmAvailability.isEligibleForAvailability(farmland) then
             local isSelected = farmland.id == selectedId
             local color
-            if RmFmAvailability.isForSale(farmland.id) then
+            if RmFarmlandMarket.isWillNotSell(farmland.id) then
+                color = isSelected
+                    and RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL_SELECTED[isBlind]
+                    or RmFarmlandMarket.OVERLAY_COLOR_WILL_NOT_SELL[isBlind]
+                Log:trace("  overlay: farmland %d painted Will not sell", farmland.id)
+            elseif RmFmAvailability.isForSale(farmland.id) then
                 color = isSelected
                     and RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE_SELECTED[isBlind]
                     or RmFarmlandMarket.OVERLAY_COLOR_AVAILABLE[isBlind]
@@ -667,6 +779,12 @@ function RmFarmlandMarket.updateAllHotspotColors()
 
     Log:trace("<<< updateAllHotspotColors()")
 end
+
+--- Repaint every farmland hotspot when the map page opens, so a refusal that changed since the last open shows.
+InGameMenuMapFrame.onFrameOpen = Utils.appendedFunction(InGameMenuMapFrame.onFrameOpen, function()
+    Log:debug("MAP: map page opened, repainting farmland hotspots")
+    RmFarmlandMarket.updateAllHotspotColors()
+end)
 
 --- Refresh map display after ownership or availability changes.
 --- Deferred via Timer.createOneshot(0) to run on the next frame,
@@ -1241,7 +1359,7 @@ local function onLoadMapFinished()
                 if farmlandId == nil then return end
                 local farmland = g_farmlandManager:getFarmlands()[farmlandId]
                 if farmland == nil then return end
-                applyFarmlandValueOverrides(self.lastContextBox, farmlandId, farmland)
+                RmFarmlandMarket.applyFarmlandValueOverrides(self.lastContextBox, farmlandId, farmland)
                 Log:debug("PF_COMPAT: Re-applied FM value overrides after PF update for farmland %d", farmlandId)
             end
         end

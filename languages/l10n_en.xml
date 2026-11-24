@@ -24,6 +24,7 @@
         <text name="rm_fm_listPrice" text="List price"/>
         <text name="rm_fm_marketValue" text="Market value"/>
         <text name="rm_fm_notForSale" text="Not for sale"/>
+        <text name="rm_fm_willNotSell" text="Will not sell"/>
         <text name="rm_fm_forSale" text="For sale"/>
 
         <!-- Context Action Buttons -->

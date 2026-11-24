@@ -361,7 +361,7 @@ function RmContractorBridge.getRelationship(farmId, farmlandId)
     end
 
     local relationship = { score = score, band = band, farmerId = person.id }
-    Log:debug("CONTRACTOR: farm %s and farmer #%s on farmland %s: score %s, band %s",
+    Log:trace("CONTRACTOR: farm %s and farmer #%s on farmland %s: score %s, band %s",
         tostring(farmId), tostring(person.id), tostring(farmlandId), tostring(score), tostring(band))
     Log:trace("<<< RmContractorBridge.getRelationship = %s / %s", tostring(score), tostring(band))
     return relationship
@@ -471,7 +471,7 @@ function RmContractorBridge.getYardFarmer(farmlandId)
         return nil
     end
 
-    Log:debug("CONTRACTOR: farmland %s is the farmyard of farmer #%s %s",
+    Log:trace("CONTRACTOR: farmland %s is the farmyard of farmer #%s %s",
         tostring(farmlandId), tostring(yardFarmer.id), tostring(yardFarmer.name))
     Log:trace("<<< RmContractorBridge.getYardFarmer = #%s", tostring(yardFarmer.id))
     return yardFarmer

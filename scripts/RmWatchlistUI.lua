@@ -620,8 +620,8 @@ function RmWatchlistUI._formatMessage(items)
 end
 
 --- Main entry point. Takes raw transitions (id + listingPrice from the
---- transition site), filters to local watched + still-eligible + non-self,
---- resolves names, sorts by id ascending, formats, and calls
+--- transition site), filters to local watched + still-eligible + non-self + not
+--- Will not sell, resolves names, sorts by id ascending, formats, and calls
 --- showInGameMessage. Silent no-op when there is no HUD (dedicated server,
 --- mid-teardown) or when no transitions survive filtering.
 ---@param transitions table[] list of {id=number, listingPrice=number|nil}
@@ -642,7 +642,10 @@ function RmWatchlistUI.notifyForSaleTransitions(transitions)
     local items = {}
     local seen = {}
     for _, t in ipairs(transitions) do
-        if not seen[t.id] and RmWatchlistUI.isWatched(t.id) then
+        if not seen[t.id] and RmWatchlistUI.isWatched(t.id) and RmFarmlandMarket.isWillNotSell(t.id) then
+            Log:trace("notifyForSaleTransitions: farmland %s skipped, its farmer will not sell to farm %s",
+                tostring(t.id), tostring(localFarmId))
+        elseif not seen[t.id] and RmWatchlistUI.isWatched(t.id) then
             local farmland = farmlands and farmlands[t.id] or nil
             if type(farmland) == "table"
                 and RmFmAvailability.isEligibleForAvailability(farmland)
@@ -665,8 +668,8 @@ function RmWatchlistUI.notifyForSaleTransitions(transitions)
     table.sort(items, function(a, b) return a.id < b.id end)
 
     local title, body = RmWatchlistUI._formatMessage(items)
-    -- duration=-1 -> engine MAX_DURATION (5min ceiling). Player can dismiss
-    -- any time via MENU_ACCEPT / SKIP_MESSAGE_BOX. Silent (no sound).
+    -- duration -1 shows the message for the longest time the HUD allows; the player
+    -- can dismiss it sooner (MENU_ACCEPT / SKIP_MESSAGE_BOX). Silent (no sound).
     g_currentMission.hud:showInGameMessage(title, body, -1, nil, nil, nil)
     Log:info("WATCHLIST: notified %d for-sale transition%s",
         #items, #items == 1 and "" or "s")
@@ -722,8 +725,8 @@ function RmWatchlistUI._formatCooldownMessage(items)
 end
 
 --- Main entry point. Takes raw expiries (farmId + farmlandId from the period-
---- change site), filters to local farm + watched + still-eligible, resolves
---- names, sorts by id ascending, formats, and calls showInGameMessage once.
+--- change site), filters to local farm + watched + still-eligible + not Will not
+--- sell, resolves names, sorts by id ascending, formats, and calls showInGameMessage once.
 --- Silent no-op when there is no HUD (dedicated server, mid-teardown), when
 --- the local farmId is unresolved, or when no entries survive filtering.
 ---@param expiries table[] list of {farmId=number, farmlandId=number}
@@ -758,6 +761,11 @@ function RmWatchlistUI.notifyCooldownExpiries(expiries)
             -- check is defensive: onOwnershipChanged clears cooldowns, so
             -- a still-watched-and-now-owned farmland here is a race window.
             if type(farmland) == "table"
+                and RmFmAvailability.isEligibleForAvailability(farmland)
+                and RmFarmlandMarket.isWillNotSell(e.farmlandId) then
+                Log:trace("notifyCooldownExpiries: farmland %s skipped, its farmer will not sell to farm %s",
+                    tostring(e.farmlandId), tostring(localFarmId))
+            elseif type(farmland) == "table"
                 and RmFmAvailability.isEligibleForAvailability(farmland) then
                 local name = RmWatchlistUI._resolveFarmlandName(e.farmlandId)
                 if name ~= nil then
