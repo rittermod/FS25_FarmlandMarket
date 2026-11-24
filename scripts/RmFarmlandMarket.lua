@@ -650,9 +650,10 @@ end
 function RmFarmlandMarket.updateAllHotspotColors()
     Log:trace(">>> updateAllHotspotColors()")
     local count = 0
-    for _, hotspot in pairs(g_currentMission.mapHotspots) do
-        if hotspot.getFarmland ~= nil then
-            hotspot:updateColors()
+    -- Farmland hotspots hang off each farmland; the mission's own hotspot list does not hold them
+    for _, farmland in pairs(g_farmlandManager:getFarmlands()) do
+        if farmland.mapHotspot ~= nil then
+            farmland.mapHotspot:updateColors()
             count = count + 1
         end
     end
