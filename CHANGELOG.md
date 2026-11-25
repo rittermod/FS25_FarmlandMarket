@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0.0-dev.2:
+- Added the name of The Contractor's farmer expected to take your land to sell negotiations
+- Added a Will not sell marker on the map and in the watchlist for fields The Contractor's farmers refuse to sell you
+- Made sell negotiations with The Contractor's farmers easier or harder by your relationship with them, down to refusing to buy once you have fallen out
+- Fixed field numbers on the map keeping an old for-sale color after the daily listing change or a color-blind toggle
+
 ## 1.1.0.0-dev.1:
 - Added the seller's name to the negotiation dialog and, with The Contractor, your farm's relationship with that farmer
 - Made buy negotiations on land The Contractor's farmers hold harder or easier by your relationship with them; once you have fallen out, they refuse to sell at all
